@@ -72,8 +72,11 @@ object Config {
     // servis par HA via /local (public, sans jeton). Le manifeste porte le versionning :
     //   { "versionCode": 2, "versionName": "0.2.0", "notes": "…" }
     // L'app compare versionCode au sien (PackageManager) → propose la MAJ si plus récent.
-    const val APK_URL = "$HA_BASE_URL/local/sonnette-video.apk"
-    const val APK_VERSION_URL = "$HA_BASE_URL/local/sonnette-version.json"
+    // OTA via le dépôt public GitHub : le manifeste (raw) donne versionCode + apkUrl (GitHub Release).
+    const val APK_VERSION_URL =
+        "https://raw.githubusercontent.com/shaine93/philhome-apps/main/apps/sonnette-video/version.json"
+    const val APK_URL =
+        "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 
     // Coordination multi-appareils : quand un téléphone décroche, il le signale à HA, qui pousse
     // un "cancel" (même call_id) aux AUTRES téléphones → leur écran/sonnerie s'arrête.

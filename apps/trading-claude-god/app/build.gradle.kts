@@ -23,8 +23,8 @@ android {
         minSdk = 26            // Android 8+ (icônes adaptatives, largement suffisant)
         targetSdk = 34
         // ⭐ SOURCE DE VÉRITÉ du versionning (comme la sonnette). Bump à chaque publication.
-        versionCode = 10
-        versionName = "0.9.1"
+        versionCode = 11
+        versionName = "0.9.2"
 
         buildConfigField("String", "CLAUDE_API_KEY", "\"$claudeKey\"")
     }

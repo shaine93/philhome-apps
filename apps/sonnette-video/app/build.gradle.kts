@@ -25,8 +25,8 @@ android {
         // ⭐ SOURCE DE VÉRITÉ du versionning. À chaque publication : incrémenter versionCode (+1)
         // et versionName (semver), puis lancer HA/publish.sh (build + copie APK + génère le
         // manifeste sonnette-version.json depuis ces valeurs → l'updater intégré voit la MAJ).
-        versionCode = 25
-        versionName = "0.5.9"
+        versionCode = 26
+        versionName = "0.6.0"
 
         buildConfigField("String", "HA_TOKEN", "\"$haToken\"")
 

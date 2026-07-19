@@ -141,6 +141,24 @@ class MainActivity : Activity() {
             setOnClickListener { addDialog() }
         })
 
+        // Section APPLICATION (mise à jour OTA)
+        root.addView(TextView(this).apply {
+            text = "APPLICATION"; textSize = 11.5f; setTextColor(Ui.MUTED); letterSpacing = 0.08f
+            setPadding(dp(2), dp(24), 0, dp(8))
+        })
+        val updateStatus = TextView(this).apply {
+            text = "v" + AppUpdater.currentName(this@MainActivity)
+            textSize = 13f; setTextColor(Ui.MUTED); setPadding(dp(2), 0, 0, dp(6))
+        }
+        root.addView(TextView(this).apply {
+            text = "⬇️  Mettre à jour l'app"
+            textSize = 15f; gravity = Gravity.CENTER; setTextColor(Ui.TEXT)
+            background = Ui.stroked(Ui.SURFACE, Ui.BORDER, dp(12).toFloat(), dp(1))
+            layoutParams = mp(dp(4)).apply { height = dp(50) }
+            setOnClickListener { AppUpdater.checkAndUpdate(this@MainActivity) { s -> updateStatus.text = s } }
+        })
+        root.addView(updateStatus)
+
         // Note alertes
         root.addView(TextView(this).apply {
             text = "🔔  Alertes de chute actives : tu seras prévenu par notification si une de tes valeurs " +

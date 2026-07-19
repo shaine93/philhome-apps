@@ -23,7 +23,7 @@ import java.util.concurrent.TimeUnit
  */
 object AppUpdater {
 
-    data class VersionInfo(val code: Long, val name: String, val notes: String)
+    data class VersionInfo(val code: Long, val name: String, val notes: String, val apkUrl: String)
 
     fun currentCode(ctx: Context): Long =
         ctx.packageManager.getPackageInfo(ctx.packageName, 0).longVersionCode
@@ -60,7 +60,7 @@ object AppUpdater {
 
             val notes = if (remote.notes.isNotBlank()) " — ${remote.notes}" else ""
             ui("Téléchargement v${remote.name}$notes…")
-            val apk = download(activity)
+            val apk = download(activity, remote.apkUrl)
             if (apk == null) { ui("❌ Échec du téléchargement"); return@Thread }
 
             ui("Installation v${remote.name}…")
@@ -90,7 +90,8 @@ object AppUpdater {
                     val vi = VersionInfo(
                         o.optLong("versionCode", -1),
                         o.optString("versionName", "?"),
-                        o.optString("notes", "")
+                        o.optString("notes", ""),
+                        o.optString("apkUrl", Config.APK_URL)   // l'APK peut être hébergée sur GitHub Release
                     )
                     if (vi.code >= 0) return vi
                 }
@@ -103,10 +104,10 @@ object AppUpdater {
         return null
     }
 
-    private fun download(ctx: Context): File? = try {
+    private fun download(ctx: Context, apkUrl: String): File? = try {
         val dir = File(ctx.cacheDir, "updates").apply { mkdirs() }
         val file = File(dir, "sonnette-update.apk")
-        updClient.newCall(Request.Builder().url(Config.APK_URL).build()).execute().use { r ->
+        updClient.newCall(Request.Builder().url(apkUrl).build()).execute().use { r ->
             if (!r.isSuccessful) return null
             file.outputStream().use { out -> r.body!!.byteStream().copyTo(out) }
         }
