@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Avant-plan icône Sonnette Vidéo : corps blanc d'une sonnette vidéo, objectif (caméra)
+     découpé pour laisser voir le fond bleu, reflet de verre, et bouton d'appel ambre.
+     Dessiné dans la zone de sécurité (centré, ~±32 autour de 54,54). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Corps de la sonnette (blanc) avec l'objectif découpé (evenOdd = trou) -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M52,24 L56,24 A12,12 0 0 1 68,36 L68,72 A12,12 0 0 1 56,84
+            L52,84 A12,12 0 0 1 40,72 L40,36 A12,12 0 0 1 52,24 Z
+            M45,40 a9,9 0 1 0 18,0 a9,9 0 1 0 -18,0 Z" />
+
+    <!-- Reflet de verre sur l'objectif -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M50,36 a2,2 0 1 0 4,0 a2,2 0 1 0 -4,0 Z" />
+
+    <!-- Bouton d'appel (ambre) -->
+    <path
+        android:fillColor="#FFFFC107"
+        android:pathData="M47,68 a7,7 0 1 0 14,0 a7,7 0 1 0 -14,0 Z" />
+
+</vector>

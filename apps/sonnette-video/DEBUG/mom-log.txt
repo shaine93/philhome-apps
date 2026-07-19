@@ -1,0 +1,12 @@
+07-01 17:26:05.297 [FCM] push reçu type=ring data={image_url=https://philhomeassist.duckdns.org/api/camera_proxy/camera.doorbell_repeater_74a8, type=ring, title=Quelqu'un sonne a la porte, call_id=1782919564} from=286943738996
+07-01 17:26:05.312 [Net] prewarm OK (HTTP 405)
+07-01 17:26:05.388 [FCM-register] OK (HTTP 200) → https://philhomeassist.duckdns.org/api/webhook/sv_register_c367889464589909d360a941
+07-01 17:26:05.706 [IncomingCall] onCreate action=RINGING call_id=1782919564
+07-01 17:26:05.728 [Net] prewarm OK (HTTP 405)
+07-01 17:26:05.748 [IncomingCall] video WebRTC start (door_hi, video+audio)
+07-01 17:26:05.751 [Video] play door_hi [webrtc] media=video+audio
+07-01 17:26:07.180 [IncomingCall] snapshot OK
+07-01 17:26:09.533 [Video-JS] t=0.0 OK muted=true nosrc
+07-01 17:26:10.796 [FCM] push reçu type=cancel data={type=cancel, call_id=testcancel} from=286943738996
+07-01 17:26:10.851 [IncomingCall] cancel reçu (répondu ailleurs / annulé) → fermeture
+07-01 17:26:10.867 [FCM-register] OK (HTTP 200) → https://philhomeassist.duckdns.org/api/webhook/sv_register_c367889464589909d360a941

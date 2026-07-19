@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- APK téléchargée pour la mise à jour intégrée (cacheDir/updates/…). -->
+    <cache-path name="updates" path="updates/" />
+    <!-- Photos de la galerie livreurs (filesDir/gallery/) — pour l'envoi par mail (preuve litige). -->
+    <files-path name="gallery" path="gallery/" />
+</paths>

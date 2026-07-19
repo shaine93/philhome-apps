@@ -1,0 +1,29 @@
+# ── Build & IDE ─────────────────────────────────────────────
+**/build/
+**/.gradle/
+**/.idea/
+**/local.properties
+*.iml
+.DS_Store
+captures/
+.externalNativeBuild/
+.cxx/
+
+# ── Secrets / config sensible (JAMAIS sur git) ──────────────
+# Le token HA et la clé Anthropic sont lus au build depuis ~/.ha_token et ~/.claude_api_key
+# (hors dépôt). On exclut aussi les configs sensibles :
+**/google-services.json
+**/fcm-service-account.json
+**/*.keystore
+**/*.jks
+**/.claude/
+**/*.env
+
+# ── Binaires lourds ─────────────────────────────────────────
+# Les APK sont livrées via les GitHub Releases, PAS dans git.
+*.apk
+*.aab
+
+# ── Python ──────────────────────────────────────────────────
+**/__pycache__/
+*.pyc

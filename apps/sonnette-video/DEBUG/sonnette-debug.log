@@ -1,0 +1,23 @@
+06-30 18:56:42.920 [DebugLog] init OK -> /storage/emulated/0/Android/data/com.philhome.sonnettevideo/files/debug/sonnette-debug.log
+06-30 18:56:42.924 [IncomingCall] onCreate action=ANSWER call_id=test123
+06-30 18:56:43.649 [IncomingCall] video WebRTC start (door_hi, video+audio)
+06-30 18:56:43.658 [Video] play door_hi [webrtc] media=video+audio
+06-30 18:56:43.919 [Video] unmute (audio visiteur)
+06-30 18:56:43.920 [IncomingCall] startTalk vers 192.168.1.38
+06-30 18:56:43.922 [DoorbellTalk] start() host=192.168.1.38 mode=RELAIS HA
+06-30 18:56:43.924 [IncomingCall] talk: connecting
+06-30 18:56:43.925 [RelayTransport] connexion WS HA (essai 1/3) → https://philhomeassist.duckdns.org/api/aqara_talk/192.168.1.38
+06-30 18:56:44.772 [FCM-register] OK (HTTP 200) → https://philhomeassist.duckdns.org/api/webhook/sv_register_c367889464589909d360a941
+06-30 18:56:44.794 [CallCoord] answered call_id=test123 → HTTP 200
+06-30 18:56:44.811 [RelayTransport] onOpen HTTP 101
+06-30 18:56:44.811 [RelayTransport] WebSocket HA ouvert vers 192.168.1.38
+06-30 18:56:44.812 [DoorbellTalk] transport ouvert (RELAIS HA)
+06-30 18:56:44.900 [Net] prewarm OK (HTTP 405)
+06-30 18:56:45.032 [DoorbellTalk] effets micro natifs: NS=true AGC=false AEC=true
+06-30 18:56:45.298 [DoorbellTalk] capture micro active (16 kHz mono) — envoi de l'AAC en cours
+06-30 18:56:45.302 [IncomingCall] talk: active
+06-30 18:56:46.384 [IncomingCall] snapshot OK
+06-30 18:56:46.643 [Video-JS] PLAYING 1600x1200
+06-30 18:56:47.642 [Video-JS] t=1.3 OK muted=false aTracks=1(true/false/live)
+06-30 18:56:50.642 [Video-JS] t=4.3 OK muted=false aTracks=1(true/false/live)
+06-30 18:56:51.902 [DoorbellTalk] 100 trames AAC envoyées

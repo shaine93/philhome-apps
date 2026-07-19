@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Reseau -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <!-- Notifications + popup plein ecran (Android 13/14) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Reveil ecran + audio mains libres -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- Service en avant-plan type "appel" : ancre l'écran d'appel verrouillé -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
+    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+    <!-- talk-back Lot 3 (micro) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- Service permanent (24/7) : garde le processus vivant pour recevoir TOUS les pushs -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+
+    <!-- Ne pas tuer la réception des appels en veille -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Ré-enregistrer le token FCM au redémarrage du téléphone (coupure de courant, MAJ) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Mise à jour intégrée : installer la nouvelle APK téléchargée depuis HA -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="Sonnette Vidéo"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+        android:usesCleartextTraffic="false">
+
+        <!-- Écran d'accueil / lanceur : ouvrir une fois pour autoriser + tester -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Ecran d'appel : s'affiche par-dessus le verrouillage, allume l'ecran -->
+        <activity
+            android:name=".IncomingCallActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Ecran "Réglages requis" (notifs, plein écran, batterie, MIUI autostart) -->
+        <activity
+            android:name=".PermissionsActivity"
+            android:exported="false" />
+
+        <!-- Galerie historique livreurs (6 mois, jour par jour) -->
+        <activity
+            android:name=".GalleryActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- DEV : test vidéo MSE (lançable via adb pour validation) -->
+        <activity
+            android:name=".DevVideoActivity"
+            android:exported="true"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Vue live "regarder qui est là" : ouverte au tap sur une alerte Présence / Livreur -->
+        <activity
+            android:name=".LiveViewActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:showWhenLocked="true"
+            android:turnScreenOn="true"
+            android:excludeFromRecents="true"
+            android:configChanges="orientation|screenSize|keyboardHidden" />
+
+        <!-- Service de premier plan type "appel" : porte la notif full-screen et
+             ancre l'écran d'appel pour qu'il ne se referme pas (téléphone verrouillé) -->
+        <service
+            android:name=".CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="phoneCall" />
+
+        <!-- Service PERMANENT : maintient le processus vivant 24/7 pour que le FCM soit
+             toujours livré (sinon MIUI tue l'app et elle cesse de sonner / d'alerter). -->
+        <service
+            android:name=".KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="doorbell_keepalive_push" />
+        </service>
+
+        <!-- Reception des pushs FCM (ring) -->
+        <service
+            android:name=".SonnetteMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- Boutons d'action de la notif (refuser) -->
+        <receiver
+            android:name=".CallActionReceiver"
+            android:exported="false" />
+
+        <!-- Battement de cœur anti-veille : reçoit l'alarme allowWhileIdle et reprogramme le ping -->
+        <receiver
+            android:name=".HeartbeatReceiver"
+            android:exported="false" />
+
+        <!-- Ré-enregistre le token FCM au démarrage du téléphone (sinon l'app cesse de sonner après reboot) -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- FileProvider : partage l'APK téléchargée à l'installateur système (mise à jour intégrée) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <!-- Canal de notif par defaut FCM (importance haute) -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="sonnette_incoming" />
+
+    </application>
+</manifest>
