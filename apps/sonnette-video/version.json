@@ -1,6 +1,6 @@
 {
-  "versionCode": 27,
-  "versionName": "0.6.1",
-  "notes": "Archive une photo pour chaque sonnette (pas seulement les detections mouvement)",
+  "versionCode": 28,
+  "versionName": "0.6.2",
+  "notes": "Message d'accueil auto envoye a la sonnette des qu'elle sonne (enregistrable dans l'app)",
   "apkUrl": "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 }

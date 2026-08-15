@@ -37,6 +37,9 @@ class SonnetteMessagingService : FirebaseMessagingService() {
                     callId = data["call_id"] ?: System.currentTimeMillis().toString(),
                     imageUrl = data["image_url"]
                 )
+                // 2026-08-16 : message d'accueil auto vers la sonnette, indépendant de si quelqu'un
+                // décroche côté téléphone — voir GreetingRecorder (enregistrement) / GreetingSender.
+                GreetingSender.sendToDoorbell(applicationContext)
             }
             "cancel" -> {                                  // visiteur reparti / déjà répondu sur l'autre tél
                 DebugLog.push("Coord", "CANCEL reçu → arrêt service d'appel + broadcast")

@@ -152,6 +152,60 @@ class MainActivity : Activity() {
             layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
         })
 
+        // Section MESSAGE D'ACCUEIL — envoyé automatiquement à la sonnette dès qu'elle sonne,
+        // que quelqu'un décroche ou non côté téléphone. Enregistré une fois, réutilisé à chaque sonnerie.
+        root.addView(sectionLabel("Message d'accueil sonnette"))
+        val greetingBtn = secondaryBtn("") {}
+        val greetingPreviewBtn = secondaryBtn("▶️  Écouter") {}
+        val greetingDeleteBtn = secondaryBtn("🗑  Supprimer") {}
+        var recording = false
+        fun paintGreeting() {
+            val has = GreetingRecorder.exists(this)
+            greetingBtn.text = when {
+                recording -> "⏺  Enregistrement…"
+                has -> "🎙️  Ré-enregistrer (remplace l'actuel)"
+                else -> "🎙️  Enregistrer un message"
+            }
+            greetingPreviewBtn.visibility = if (has && !recording) ViewGroup.VISIBLE else ViewGroup.GONE
+            greetingDeleteBtn.visibility = if (has && !recording) ViewGroup.VISIBLE else ViewGroup.GONE
+            greetingPreviewBtn.text = if (has) "▶️  Écouter (${"%.0f".format(GreetingRecorder.durationSeconds(this))}s)" else "▶️  Écouter"
+        }
+        greetingBtn.setOnClickListener {
+            if (recording) {
+                GreetingRecorder.stopRecording()
+            } else {
+                recording = true
+                paintGreeting()
+                GreetingRecorder.startRecording(
+                    this,
+                    onTick = { secs -> greetingBtn.text = "⏺  Enregistrement… %.0fs".format(secs) },
+                    onDone = { ok ->
+                        recording = false
+                        paintGreeting()
+                        DebugLog.log("MainActivity", "message d'accueil enregistré: $ok")
+                    }
+                )
+            }
+        }
+        greetingPreviewBtn.setOnClickListener {
+            greetingPreviewBtn.isEnabled = false
+            GreetingRecorder.preview(this) { greetingPreviewBtn.isEnabled = true }
+        }
+        greetingDeleteBtn.setOnClickListener {
+            GreetingRecorder.delete(this)
+            paintGreeting()
+        }
+        paintGreeting()
+        root.addView(greetingBtn)
+        root.addView(greetingPreviewBtn)
+        root.addView(greetingDeleteBtn)
+        root.addView(TextView(this).apply {
+            text = "Envoyé automatiquement à la sonnette dès qu'elle sonne (livreur ou visiteur), " +
+                "que tu décroches ou non. Ex: « Bonjour, ne bougez pas, nous allons vous répondre. »"
+            textSize = 12.5f; setTextColor(Ui.MUTED)
+            layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
+        })
+
         // Section RÉGLAGES
         root.addView(sectionLabel("Réglages"))
         root.addView(secondaryBtn("⚙️  Réglages requis (écran verrouillé)") {
