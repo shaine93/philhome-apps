@@ -20,6 +20,13 @@ object DeliveryStore {
     private const val RETENTION_MS = 180L * 24 * 3600 * 1000   // ~6 mois
     private val lock = Any()
 
+    // 2026-08-16 : dédup en mémoire (par call_id) pour les sonnettes "ring" — la photo peut être
+    // récupérée par deux chemins différents (notif d'appel + aperçu live de l'écran d'appel) ; on ne
+    // veut archiver que la première arrivée. Volontairement non persisté : survit uniquement le temps
+    // du processus, ce qui suffit (un seul call_id ne revit jamais après un redémarrage de l'app).
+    private val archivedCallIds = LinkedHashSet<String>()
+    private const val ARCHIVED_IDS_CAP = 50
+
     data class Entry(val ts: Long, val title: String, val text: String, val file: File)
 
     private fun dir(ctx: Context): File =
@@ -44,6 +51,24 @@ object DeliveryStore {
                 DebugLog.log("Gallery", "record KO: ${e.message}")
             }
         }
+    }
+
+    /**
+     * Comme [record], mais pour les sonnettes "ring" : n'archive qu'une fois par [callId], même si
+     * appelé depuis plusieurs endroits (notif d'appel, aperçu live) pour le même événement. Si
+     * [callId] est null (jamais censé arriver pour un vrai push, robustesse), archive quand même —
+     * mieux vaut un doublon occasionnel qu'une sonnette silencieusement sans photo.
+     */
+    fun recordForCall(ctx: Context, callId: String?, title: String, text: String, photo: Bitmap) {
+        if (callId != null) {
+            synchronized(lock) {
+                if (!archivedCallIds.add(callId)) return
+                if (archivedCallIds.size > ARCHIVED_IDS_CAP) {
+                    archivedCallIds.iterator().let { it.next(); it.remove() }
+                }
+            }
+        }
+        record(ctx, title, text, photo)
     }
 
     /** Toutes les entrées valides, les plus récentes d'abord. */

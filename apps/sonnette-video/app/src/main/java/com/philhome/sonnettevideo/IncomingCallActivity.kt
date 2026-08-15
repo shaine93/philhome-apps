@@ -371,6 +371,12 @@ class IncomingCallActivity : Activity() {
                             if (first) {
                                 DebugLog.log("IncomingCall", "snapshot ${if (bmp != null) "OK (refresh)" else "vide (HTTP ${resp.code})"}")
                                 first = false
+                                // 2026-08-16 : repli si la notif d'appel n'avait pas d'image_url (ou son
+                                // téléchargement a échoué) — cette image de l'aperçu live sert alors de
+                                // photo archivée. Dédupliqué par call_id : sans effet si déjà archivée.
+                                if (bmp != null) {
+                                    DeliveryStore.recordForCall(this@IncomingCallActivity, callId, "Sonnette", "Sonnette", bmp)
+                                }
                             }
                         }
                 } catch (e: Exception) {

@@ -89,6 +89,10 @@ class CallForegroundService : Service() {
                 try {
                     NotificationManagerCompat.from(this).notify(Config.INCOMING_NOTIF_ID, withPhoto)
                 } catch (_: Exception) { }
+                // 2026-08-16 : une sonnette pressée ("ring") n'archivait jamais de photo dans la
+                // galerie — seul l'événement séparé "motion" (IA) le faisait. On réutilise la photo
+                // déjà téléchargée ci-dessus pour la notif, sans appel réseau supplémentaire.
+                DeliveryStore.recordForCall(this, callId, title, "Sonnette", bmp)
             }.apply { isDaemon = true }.start()
         }
     }
