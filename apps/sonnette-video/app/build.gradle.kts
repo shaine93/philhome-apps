@@ -1,6 +1,7 @@
 // app/build.gradle.kts — Sonnette Vidéo
 // NOTE : vérifie/bump les versions dans Android Studio (sync Gradle signalera tout dépassement).
 import java.io.File
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -16,6 +17,14 @@ android {
     val haToken = File(System.getProperty("user.home"), ".ha_token")
         .let { if (it.exists()) it.readText().trim() else "" }
 
+    // Webhook IDs + identifiants RTSP lus depuis ~/.sonnette_video_secrets.properties
+    // (JAMAIS dans le code / git — dépôt public). Compilés dans l'APK au build.
+    val secretsFile = File(System.getProperty("user.home"), ".sonnette_video_secrets.properties")
+    val secrets = Properties().apply {
+        if (secretsFile.exists()) secretsFile.inputStream().use { load(it) }
+    }
+    fun secret(key: String) = secrets.getProperty(key, "")
+
     buildFeatures { buildConfig = true }
 
     defaultConfig {
@@ -25,10 +34,17 @@ android {
         // ⭐ SOURCE DE VÉRITÉ du versionning. À chaque publication : incrémenter versionCode (+1)
         // et versionName (semver), puis lancer HA/publish.sh (build + copie APK + génère le
         // manifeste sonnette-version.json depuis ces valeurs → l'updater intégré voit la MAJ).
-        versionCode = 28
-        versionName = "0.6.2"
+        versionCode = 29
+        versionName = "0.6.3"
 
         buildConfigField("String", "HA_TOKEN", "\"$haToken\"")
+        buildConfigField("String", "GATE_WEBHOOK_ID", "\"${secret("GATE_WEBHOOK_ID")}\"")
+        buildConfigField("String", "FCM_REGISTER_WEBHOOK_ID", "\"${secret("FCM_REGISTER_WEBHOOK_ID")}\"")
+        buildConfigField("String", "CALL_EVENT_WEBHOOK_ID", "\"${secret("CALL_EVENT_WEBHOOK_ID")}\"")
+        buildConfigField("String", "HEARTBEAT_WEBHOOK_ID", "\"${secret("HEARTBEAT_WEBHOOK_ID")}\"")
+        buildConfigField("String", "LOG_WEBHOOK_ID", "\"${secret("LOG_WEBHOOK_ID")}\"")
+        buildConfigField("String", "RTSP_USER", "\"${secret("RTSP_USER")}\"")
+        buildConfigField("String", "RTSP_PASS", "\"${secret("RTSP_PASS")}\"")
 
         // Les 2 téléphones cibles sont arm64 → on ne package QUE cette ABI (libVLC bundle sinon
         // toutes les ABI → APK ~192 Mo). arm64 seul ≈ 50 Mo.

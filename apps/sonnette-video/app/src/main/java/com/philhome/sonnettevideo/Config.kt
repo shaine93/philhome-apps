@@ -9,22 +9,23 @@ object Config {
     const val HA_BASE_URL = "https://philhomeassist.duckdns.org"
 
     // Webhook HA dédié "ouvrir le portail" — impulsion START (relais eWeLink).
-    // TODO : créer ce webhook côté HA et reporter l'ID aléatoire ici.
-    const val GATE_WEBHOOK_ID = "sv_portail_d20fa0aac3413c266940a3f0"
+    // Lu depuis ~/.sonnette_video_secrets.properties au build (BuildConfig) — JAMAIS en dur
+    // dans le code / git (dépôt public : un ancien ID committé en clair a été révoqué et régénéré
+    // côté HA le 2026-08-21 après exposition publique).
+    val GATE_WEBHOOK_ID: String = BuildConfig.GATE_WEBHOOK_ID
 
     // Webhook HA d'enregistrement du token FCM de cette app (la VM lira ce token pour pousser).
-    // TODO : créer ce webhook côté HA et reporter l'ID ici.
-    const val FCM_REGISTER_WEBHOOK_ID = "sv_register_c367889464589909d360a941"
+    val FCM_REGISTER_WEBHOOK_ID: String = BuildConfig.FCM_REGISTER_WEBHOOK_ID
 
     // Battement de cœur : le service permanent ping ce webhook toutes les 10 min. Le
     // `last_triggered` de l'automatisation HA = « dernière fois où le téléphone était vivant ».
     // Si le ping s'arrête, on sait à la minute près quand l'app est morte (diagnostic MIUI).
-    const val HEARTBEAT_WEBHOOK_ID = "sv_heartbeat_9f3b71c0a2e84d55"
+    val HEARTBEAT_WEBHOOK_ID: String = BuildConfig.HEARTBEAT_WEBHOOK_ID
     fun heartbeatUrl() = "$HA_BASE_URL/api/webhook/$HEARTBEAT_WEBHOOK_ID"
 
     // Log distant : l'app pousse ses lignes importantes vers HA → lecture des logs des DEUX
     // téléphones SANS câble USB (via le logbook HA, tagué par modèle d'appareil).
-    const val LOG_WEBHOOK_ID = "sv_log_4c1e9a7b26f0d833"
+    val LOG_WEBHOOK_ID: String = BuildConfig.LOG_WEBHOOK_ID
     fun logUrl() = "$HA_BASE_URL/api/webhook/$LOG_WEBHOOK_ID"
 
     // Caméra de la sonnette (pour info / fallback ; l'image arrive normalement dans le push).
@@ -36,8 +37,9 @@ object Config {
 
     // Identifiants RTSP « LAN Preview » de la sonnette (saisis dans l'app Aqara), pour la VIDÉO EN
     // DIRECT sans HA : rtsp://<user>:<pass>@<ip>:8554/ch1 (ch1=1200p, ch2=960p, ch3=480p).
-    const val RTSP_USER = "697"
-    const val RTSP_PASS = "363"
+    // Lu depuis ~/.sonnette_video_secrets.properties au build — JAMAIS en dur dans le code / git.
+    val RTSP_USER: String = BuildConfig.RTSP_USER
+    val RTSP_PASS: String = BuildConfig.RTSP_PASS
     const val RTSP_CONTROL_PORT = 54324   // port contrôle talk = sonde « sonnette joignable en LAN »
 
     // Talk-back RELAIS via HA (marche en 5G ET en WiFi). L'app envoie l'AAC en WebSocket à HA,
@@ -80,8 +82,7 @@ object Config {
 
     // Coordination multi-appareils : quand un téléphone décroche, il le signale à HA, qui pousse
     // un "cancel" (même call_id) aux AUTRES téléphones → leur écran/sonnerie s'arrête.
-    // TODO : créer ce webhook côté HA + l'automatisation de relais (voir doc projet).
-    const val CALL_EVENT_WEBHOOK_ID = "sv_call_event_a7f3c1e9b85d4206"
+    val CALL_EVENT_WEBHOOK_ID: String = BuildConfig.CALL_EVENT_WEBHOOK_ID
     fun callEventUrl() = "$HA_BASE_URL/api/webhook/$CALL_EVENT_WEBHOOK_ID"
 
     // Flux vidéo live de la sonnette (MJPEG via HA, marche en 5G avec le jeton longue durée).

@@ -1,6 +1,6 @@
 {
-  "versionCode": 28,
-  "versionName": "0.6.2",
-  "notes": "Message d'accueil auto envoye a la sonnette des qu'elle sonne (enregistrable dans l'app)",
+  "versionCode": 29,
+  "versionName": "0.6.3",
+  "notes": "Securite : rotation des webhooks HA (portail/register/heartbeat/log/call_event), plus jamais commits en clair",
   "apkUrl": "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 }

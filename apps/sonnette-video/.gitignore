@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Logs runtime tirés des téléphones : contiennent des URLs de webhook HA (secrets) en clair.
+DEBUG/*.log
