@@ -1,5 +1,6 @@
 package com.philhome.sonnettevideo
 
+import android.content.Context
 import java.net.InetSocketAddress
 import java.net.Socket
 
@@ -16,7 +17,8 @@ object Lan {
 
     /** true si la sonnette répond en direct sur le LAN (donc chemin sans-HA possible). */
     fun isDoorbellOnLan(
-        host: String = Config.DOORBELL_IP,
+        ctx: Context,
+        host: String = DoorbellIp.current(ctx),
         port: Int = Config.RTSP_CONTROL_PORT
     ): Boolean = try {
         Socket().use { s ->

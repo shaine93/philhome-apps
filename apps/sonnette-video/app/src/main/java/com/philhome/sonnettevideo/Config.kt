@@ -32,8 +32,8 @@ object Config {
     const val CAMERA_ENTITY = "camera.doorbell_repeater_74a8"
 
     // Talk-back : IP LAN de la sonnette Aqara G400 (ports contrôle 54324 / audio 54323).
-    // TODO : rendre découvrable (mDNS/HA) plutôt qu'en dur si l'IP peut changer.
-    const val DOORBELL_IP = "192.168.1.38"
+    // IP résolue dynamiquement depuis HA — voir [DoorbellIp]. Ne plus utiliser cette constante
+    // directement (gardée en interne par [DoorbellIp] comme repli avant le premier rafraîchissement).
 
     // Identifiants RTSP « LAN Preview » de la sonnette (saisis dans l'app Aqara), pour la VIDÉO EN
     // DIRECT sans HA : rtsp://<user>:<pass>@<ip>:8554/ch1 (ch1=1200p, ch2=960p, ch3=480p).

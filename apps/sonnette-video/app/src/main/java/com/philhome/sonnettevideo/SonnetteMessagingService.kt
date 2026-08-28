@@ -25,7 +25,10 @@ class SonnetteMessagingService : FirebaseMessagingService() {
         // Auto-réparation : si on a été réveillé par un push, c'est peut-être que le processus avait
         // été tué. On (re)démarre le service permanent pour rester vivant ensuite.
         KeepAliveService.start(applicationContext)
-        if (data["type"] == "ring") Net.prewarm()   // chauffe la connexion dès la sonnerie
+        if (data["type"] == "ring") {
+            Net.prewarm()               // chauffe la connexion dès la sonnerie
+            DoorbellIp.refresh(this)    // rafraîchit l'IP pour le PROCHAIN appel (pas celui-ci)
+        }
         when (data["type"]) {
             // Démarre le FGS type phoneCall : c'est lui qui porte la notif full-screen
             // et ancre l'écran d'appel pour qu'il NE se referme pas (téléphone verrouillé).

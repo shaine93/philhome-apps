@@ -65,6 +65,17 @@ class WebrtcVideo(private val web: WebView, private val onPlaying: () -> Unit = 
         web.post { web.evaluateJavascript("window.__wantSound=${!muted};", null) }
     }
 
+    /**
+     * Anti-Larsen : réduit EN CONTINU le volume du visiteur pendant qu'on parle (évite la boucle
+     * acoustique haut-parleur→micro sur le même téléphone). [level] 0..1. Appliqué par une boucle
+     * JS rapide (80 ms, voir PLAY_JS) — plus réactif que ré-évaluer du JS depuis Kotlin à chaque
+     * tampon micro (~64 ms), ce qui saturerait le pont WebView↔JS.
+     */
+    fun duck(level: Double) {
+        val v = level.coerceIn(0.0, 1.0)
+        web.post { web.evaluateJavascript("window.__duck=$v;", null) }
+    }
+
     fun destroy() {
         try { web.loadUrl("about:blank"); web.destroy() } catch (_: Exception) {}
     }
@@ -84,8 +95,12 @@ class WebrtcVideo(private val web: WebView, private val onPlaying: () -> Unit = 
 (function(){
   if(window.__camInit)return; window.__camInit=true;
   if(typeof window.__wantSound==='undefined') window.__wantSound=false;
+  if(typeof window.__duck==='undefined') window.__duck=1;
   function fv(){var v=document.querySelector('video');if(v)return v;
     var a=document.querySelectorAll('*');for(var i=0;i<a.length;i++){if(a[i].shadowRoot){var s=a[i].shadowRoot.querySelector('video');if(s)return s;}}return null;}
+  // Anti-Larsen : boucle courte dédiée (80 ms) — applique window.__duck (mis à jour depuis Kotlin
+  // à chaque tampon micro) sans attendre le tick 500 ms de la boucle principale ci-dessous.
+  setInterval(function(){ var v=fv(); if(v){ try{ if(v.volume!==window.__duck) v.volume=window.__duck; }catch(e){} } },80);
   var logged=false, tick=0, lastT=-1;
   setInterval(function(){
     var v=fv(); if(!v)return;

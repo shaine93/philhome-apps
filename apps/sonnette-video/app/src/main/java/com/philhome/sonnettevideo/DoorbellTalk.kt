@@ -41,12 +41,18 @@ import kotlin.random.Random
  */
 class DoorbellTalk(
     private val host: String,
-    private val useRelay: Boolean = true
+    private val useRelay: Boolean = true,
+    private val sensitivity: Double = 1.0
 ) {
     companion object {
         private const val TAG = "DoorbellTalk"
         private const val SR = AqaraTalkProtocol.SAMPLE_RATE   // 16000
         private const val MIME = "audio/mp4a-latm"
+        // Nb de trames envoyées avec SUCCÈS d'affilée avant de considérer le pipe « chaud » et
+        // d'annoncer onState("ready") — 7 trames ≈ 450 ms à 16 kHz/1024 échantillons/trame.
+        // Choisi pour éviter le symptôme vécu : indicateur vert trop tôt → 1er mot ("bonjour") avalé
+        // pendant que la connexion HA↔sonnette finit de s'établir.
+        private const val READY_FRAMES = 7
     }
 
     @Volatile private var running = false
@@ -58,8 +64,12 @@ class DoorbellTalk(
     private var transport: TalkTransport? = null
     private var worker: Thread? = null
 
-    /** [onState] : "connecting" / "active" / "stopped" / "error: …". */
-    fun start(onState: (String) -> Unit = {}) {
+    /**
+     * [onState] : "connecting" / "active" / "ready" (trames confirmées, sûr de parler) /
+     * "stopped" / "error: …". [onGain] : gain lissé (0..1) de [VoiceFilter], ~1x par tampon
+     * (~64 ms) — réutilisable pour un ducking anti-Larsen du son entrant pendant qu'on parle.
+     */
+    fun start(onState: (String) -> Unit = {}, onGain: (Double) -> Unit = {}) {
         if (running) return
         running = true
         worker = thread(name = "doorbell-talk") {
@@ -71,7 +81,7 @@ class DoorbellTalk(
                 onState("connecting")
                 tr.open()
                 DebugLog.log(TAG, "transport ouvert ($mode)")
-                captureLoop(tr, onState)
+                captureLoop(tr, onState, onGain)
             } catch (e: Exception) {
                 DebugLog.log(TAG, "ERREUR talk", e)
                 onState("error: ${e.message}")
@@ -89,7 +99,7 @@ class DoorbellTalk(
     }
 
     @SuppressLint("MissingPermission") // RECORD_AUDIO assurée par PermissionsActivity
-    private fun captureLoop(tr: TalkTransport, onState: (String) -> Unit) {
+    private fun captureLoop(tr: TalkTransport, onState: (String) -> Unit, onGain: (Double) -> Unit) {
         val minBuf = AudioRecord.getMinBufferSize(SR, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         val rec = AudioRecord(
             MediaRecorder.AudioSource.VOICE_COMMUNICATION,   // NS/AGC/AEC matériels + anti-larsen
@@ -117,7 +127,7 @@ class DoorbellTalk(
         enc.start()
         encoder = enc
 
-        val filter = VoiceFilter(SR)
+        val filter = VoiceFilter(SR, sensitivity)
         val pcm = ShortArray(1024)
         val pcmBytes = ByteArray(pcm.size * 2)
         val info = MediaCodec.BufferInfo()
@@ -127,12 +137,14 @@ class DoorbellTalk(
         DebugLog.log(TAG, "capture micro active (16 kHz mono) — envoi de l'AAC en cours")
         onState("active")
         var sent = 0L
+        var consecutiveOk = 0
+        var readyNotified = false
 
         while (running) {
             val n = rec.read(pcm, 0, pcm.size)
             if (n <= 0) continue
 
-            filter.process(pcm, n)   // « uniquement la voix »
+            filter.process(pcm, n, onGain)   // « uniquement la voix »
 
             for (i in 0 until n) {
                 val v = pcm[i].toInt()
@@ -157,8 +169,16 @@ class DoorbellTalk(
                     System.arraycopy(AqaraTalkProtocol.adtsHeader(info.size), 0, frame, 0, 7)
                     ob.position(info.offset)
                     ob.get(frame, 7, info.size)
-                    tr.sendAdtsFrame(frame)
+                    val ok = tr.sendAdtsFrame(frame)
                     if (++sent % 100L == 0L) DebugLog.log(TAG, "$sent trames AAC envoyées")
+                    // « ready » = confirmation RÉELLE que les trames partent en continu, pas un
+                    // minuteur à l'aveugle — évite le mot avalé pendant que la connexion se stabilise.
+                    if (ok) consecutiveOk++ else consecutiveOk = 0
+                    if (!readyNotified && consecutiveOk >= READY_FRAMES) {
+                        readyNotified = true
+                        DebugLog.log(TAG, "pipe confirmé chaud ($READY_FRAMES trames d'affilée) → ready")
+                        onState("ready")
+                    }
                 }
                 enc.releaseOutputBuffer(outIdx, false)
                 outIdx = enc.dequeueOutputBuffer(info, 0)
@@ -192,7 +212,8 @@ class DoorbellTalk(
 /** Sortie d'une trame AAC-LC ADTS vers la sonnette. */
 interface TalkTransport {
     fun open()
-    fun sendAdtsFrame(frame: ByteArray)
+    /** @return true si la trame a été acceptée par le transport (pas de garantie de réception par la sonnette). */
+    fun sendAdtsFrame(frame: ByteArray): Boolean
     fun close()
 }
 
@@ -260,9 +281,7 @@ class RelayTransport(private val doorbellIp: String) : TalkTransport {
 
     private companion object { const val ATTEMPTS = 3 }
 
-    override fun sendAdtsFrame(frame: ByteArray) {
-        ws?.send(ByteString.of(*frame))
-    }
+    override fun sendAdtsFrame(frame: ByteArray): Boolean = ws?.send(ByteString.of(*frame)) ?: false
 
     override fun close() {
         try { ws?.send("stop") } catch (_: Exception) {}
@@ -315,15 +334,20 @@ class DirectTransport(private val host: String) : TalkTransport {
         startHeartbeat()
     }
 
-    override fun sendAdtsFrame(frame: ByteArray) {
-        val a = addr ?: return
+    override fun sendAdtsFrame(frame: ByteArray): Boolean {
+        val a = addr ?: return false
         val rtp = AqaraTalkProtocol.rtpHeader(AqaraTalkProtocol.RTP_PAYLOAD_TYPE, rtpTs, ssrc, seq)
         seq = (seq + 1) and 0xFFFF
         rtpTs += AqaraTalkProtocol.SAMPLES_PER_AAC_FRAME
         val pkt = ByteArray(rtp.size + frame.size)
         System.arraycopy(rtp, 0, pkt, 0, rtp.size)
         System.arraycopy(frame, 0, pkt, rtp.size, frame.size)
-        udp?.send(DatagramPacket(pkt, pkt.size, a, AUDIO_PORT))
+        return try {
+            udp?.send(DatagramPacket(pkt, pkt.size, a, AUDIO_PORT))
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     override fun close() {

@@ -152,6 +152,34 @@ class MainActivity : Activity() {
             layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
         })
 
+        // Section FILTRE ANTI-VENT (ta voix → visiteur) — réglage manuel EN PLUS de
+        // l'auto-ajustement permanent (le plancher de bruit s'adapte déjà tout seul au vent
+        // ambiant). Ce bouton ne fait que déplacer le point de départ.
+        root.addView(sectionLabel("Filtre anti-vent (ta voix)"))
+        val windBtn = secondaryBtn("") {}
+        fun paintWind() {
+            windBtn.text = when (Prefs.windFilterLevel(this)) {
+                0 -> "🍃  Léger (laisse plus passer)"
+                2 -> "💨  Fort (plus sélectif par vent fort)"
+                else -> "🌤️  Normal (par défaut)"
+            }
+        }
+        windBtn.setOnClickListener {
+            val next = (Prefs.windFilterLevel(this) + 1) % 3
+            Prefs.setWindFilterLevel(this, next)
+            paintWind()
+            DebugLog.log("MainActivity", "Filtre anti-vent = niveau $next")
+        }
+        paintWind()
+        root.addView(windBtn)
+        root.addView(TextView(this).apply {
+            text = "Le filtre s'adapte déjà tout seul au bruit ambiant (auto-ajustement permanent). " +
+                "Ce bouton règle juste le point de départ : Léger si des mots doux sont parfois coupés, " +
+                "Fort si le vent passe encore trop par très fort vent."
+            textSize = 12.5f; setTextColor(Ui.MUTED)
+            layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
+        })
+
         // Section MESSAGE D'ACCUEIL — envoyé automatiquement à la sonnette dès qu'elle sonne,
         // que quelqu'un décroche ou non côté téléphone. Enregistré une fois, réutilisé à chaque sonnerie.
         root.addView(sectionLabel("Message d'accueil sonnette"))

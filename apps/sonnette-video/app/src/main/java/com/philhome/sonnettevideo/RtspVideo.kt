@@ -35,7 +35,7 @@ class RtspVideo(
      */
     fun play(channel: String = "ch1", muted: Boolean = true) {
         if (player != null) return
-        val url = "rtsp://${Config.RTSP_USER}:${Config.RTSP_PASS}@${Config.DOORBELL_IP}:8554/$channel"
+        val url = "rtsp://${Config.RTSP_USER}:${Config.RTSP_PASS}@${DoorbellIp.current(context)}:8554/$channel"
         DebugLog.log("RtspVideo", "play $url (libVLC, tcp) muted=$muted")
 
         // --rtsp-tcp = RTP interleaved sur TCP (fiable derrière NAT local). Cache bas = latence basse.
@@ -103,6 +103,14 @@ class RtspVideo(
         DebugLog.log("RtspVideo", "unmute (audio visiteur)")
         player?.volume = 100
     }
+
+    /**
+     * Anti-Larsen : réduit EN CONTINU le volume du visiteur pendant qu'on parle (évite la boucle
+     * acoustique haut-parleur→micro sur le même téléphone). [level] 0..1 (1 = plein volume, comme
+     * après [unmute]). Appelé à chaque tampon micro (~64 ms) par [IncomingCallActivity] — pas
+     * d'inertie ajoutée ici, le lissage vient déjà du gain de [VoiceFilter] côté appelant.
+     */
+    fun duck(level: Double) { player?.volume = (level.coerceIn(0.0, 1.0) * 100).toInt() }
 
     fun destroy() {
         try { player?.stop() } catch (_: Exception) {}

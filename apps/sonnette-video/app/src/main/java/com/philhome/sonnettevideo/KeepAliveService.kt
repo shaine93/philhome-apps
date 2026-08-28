@@ -115,6 +115,7 @@ class KeepAliveService : Service() {
          */
         fun sendHeartbeat(ctx: Context) {
             val app = ctx.applicationContext
+            DoorbellIp.refresh(app)   // profite du même cycle ~15 min pour garder l'IP à jour
             thread(name = "heartbeat-ping", isDaemon = true) {
                 val upMin = uptimeMin()
                 try {

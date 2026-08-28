@@ -29,7 +29,7 @@ object GreetingSender {
         val appCtx = ctx.applicationContext
         if (!GreetingRecorder.exists(appCtx)) return
         thread(name = "greeting-send") {
-            val transport = RelayTransport(Config.DOORBELL_IP)
+            val transport = RelayTransport(DoorbellIp.current(appCtx))
             var encoder: MediaCodec? = null
             try {
                 DebugLog.log(TAG, "envoi du message d'accueil à la sonnette…")

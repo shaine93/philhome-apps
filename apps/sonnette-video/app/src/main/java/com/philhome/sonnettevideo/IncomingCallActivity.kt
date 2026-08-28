@@ -229,21 +229,43 @@ class IncomingCallActivity : Activity() {
 
     private fun startTalk() {
         if (talk != null) return
-        DebugLog.log("IncomingCall", "startTalk vers ${Config.DOORBELL_IP} (${if (onLan) "DIRECT LAN" else "relais HA"})")
+        val doorbellIp = DoorbellIp.current(this)
+        val sensitivity = Prefs.windSensitivity(this)
+        DebugLog.log("IncomingCall", "startTalk vers $doorbellIp (${if (onLan) "DIRECT LAN" else "relais HA"}, sensibilité=$sensitivity)")
         setTalkState("connecting")
         // En LAN : talk DIRECT à la sonnette (sans HA). Hors LAN : relais HA (5G).
-        talk = DoorbellTalk(Config.DOORBELL_IP, useRelay = !onLan).also {
-            it.start { state ->
-                DebugLog.log("IncomingCall", "talk: $state")
-                setTalkState(state)
-            }
+        talk = DoorbellTalk(doorbellIp, useRelay = !onLan, sensitivity = sensitivity).also {
+            it.start(
+                onState = { state ->
+                    DebugLog.log("IncomingCall", "talk: $state")
+                    setTalkState(state)
+                },
+                onGain = { gain -> duckIncomingAudio(gain) }
+            )
         }
     }
 
     /**
+     * Anti-Larsen : quand on parle (porte de [VoiceFilter] ouverte → gain proche de 1), on réduit
+     * le son du visiteur — sinon haut-parleur ET micro ouverts en même temps sur CE téléphone
+     * bouclent (constaté en test réel : « beaucoup de larsen »). Continu et automatique (pas de
+     * bouton), directement piloté par le gain déjà lissé de VoiceFilter — pas de lissage en plus.
+     * Hors du fil UI (appelé depuis le thread de capture micro) : [RtspVideo.duck] et
+     * [WebrtcVideo.duck] gèrent chacun leur propre passage au bon thread.
+     */
+    private fun duckIncomingAudio(gain: Double) {
+        val level = 1.0 - (gain.coerceIn(0.0, 1.0) * DUCK_AMOUNT)
+        rtsp?.duck(level)
+        webrtc?.duck(level)
+    }
+
+    /**
      * Gros voyant accessibilité : orange tant qu'on n'est pas prêt, VERT « PARLEZ MAINTENANT »
-     * seulement quand la voix passera vraiment (on attend ~1,3 s après "active" = tampon de la
-     * sonnette) — pour que la maman ne parle pas trop tôt et ne se répète pas.
+     * seulement une fois [DoorbellTalk] ayant RÉELLEMENT confirmé que les trames partent en
+     * continu (state "ready") — pas un minuteur à l'aveugle. Avant : délai fixe de 700 ms après
+     * "active", qui ne suffisait pas toujours (connexion HA→sonnette parfois ~2 s) → premier mot
+     * ("bonjour") avalé pendant que le pipe finissait de s'établir. [SPEAK_READY_FALLBACK_MS] reste
+     * un filet de sécurité si "ready" n'arrivait jamais (cas limite), pas le chemin normal.
      */
     private fun setTalkState(state: String) {
         runOnUiThread {
@@ -253,7 +275,11 @@ class IncomingCallActivity : Activity() {
                     talkIndicator.text = "⏳ Préparation…"
                     talkIndicator.setBackgroundColor(Color.parseColor("#F9A825")) // orange
                     talkIndicator.removeCallbacks(showSpeakNow)
-                    talkIndicator.postDelayed(showSpeakNow, SPEAK_READY_DELAY_MS)
+                    talkIndicator.postDelayed(showSpeakNow, SPEAK_READY_FALLBACK_MS)
+                }
+                state == "ready" -> {
+                    talkIndicator.removeCallbacks(showSpeakNow)
+                    showSpeakNow.run()
                 }
                 state.startsWith("connecting") -> {
                     talkIndicator.text = "⏳ Connexion à la sonnette…"
@@ -292,7 +318,7 @@ class IncomingCallActivity : Activity() {
     private fun startVideo() {
         val directPref = Prefs.directLan(this)
         thread(name = "lan-probe") {
-            val useDirect = directPref && Lan.isDoorbellOnLan()
+            val useDirect = directPref && Lan.isDoorbellOnLan(this)
             onLan = useDirect
             DebugLog.log("IncomingCall", "chemin: " + when {
                 useDirect -> "RTSP DIRECT (sans HA)"
@@ -450,8 +476,13 @@ class IncomingCallActivity : Activity() {
         /** Broadcast interne : un autre téléphone a décroché (ou annulation) → fermer l'écran d'appel. */
         const val ACTION_CANCEL_CALL = "com.philhome.sonnettevideo.CANCEL_CALL"
         private const val MATCH = LinearLayout.LayoutParams.MATCH_PARENT
-        // Délai avant le vert « PARLEZ » après que le talk soit "active" (= marge tampon sonnette).
-        // À régler après écoute : trop court = 1er mot coupé ; trop long = peu réactif.
-        private const val SPEAK_READY_DELAY_MS = 700L
+        // Filet de sécurité UNIQUEMENT : le chemin normal est le state "ready" de DoorbellTalk
+        // (confirmation réelle que les trames partent). Ne déclenche que si "ready" n'arrive jamais.
+        private const val SPEAK_READY_FALLBACK_MS = 2500L
+        // Anti-Larsen : force de réduction du son visiteur pendant qu'on parle (0..1). 0.85 = le
+        // son visiteur descend à ~15% de son volume pendant la parole active, remonte dès qu'on
+        // se tait. À affiner à l'écoute : plus haut = moins de larsen mais visiteur moins entendu
+        // par-dessus pendant qu'on parle ; plus bas = l'inverse.
+        private const val DUCK_AMOUNT = 0.85
     }
 }
