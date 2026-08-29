@@ -1,6 +1,6 @@
 {
-  "versionCode": 30,
-  "versionName": "0.6.4",
-  "notes": "IP sonnette resolue dynamiquement depuis HA (fin des coupures talk-back), filtre anti-vent auto-adaptatif, anti-Larsen automatique, indicateur PARLEZ base sur confirmation reelle",
+  "versionCode": 31,
+  "versionName": "0.6.5",
+  "notes": "Indicateur PARLEZ MAINTENANT fiable (confirmation reseau reelle), mode Maman/Avance, filtre anti-vent adaptatif, anti-Larsen automatique, IP sonnette dynamique",
   "apkUrl": "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 }
