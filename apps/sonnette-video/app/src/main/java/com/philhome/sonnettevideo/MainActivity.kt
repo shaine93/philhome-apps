@@ -104,6 +104,34 @@ class MainActivity : Activity() {
             )
         })
 
+        // Section ÉCRAN D'ACCUEIL — bascule entre le mode avancé (cet écran, historique) et le
+        // mode simple (SimpleHomeActivity : image de la porte, rien d'autre — pour un téléphone
+        // destiné à quelqu'un qui n'a besoin de rien de plus, ex. celui de maman). Volontaire
+        // uniquement : jamais changé tout seul. Voir Prefs.uiModeSimple / HomeActivity.
+        root.addView(sectionLabel("Écran d'accueil"))
+        val uiModeBtn = secondaryBtn("") {}
+        fun paintUiMode() {
+            uiModeBtn.text = if (Prefs.uiModeSimple(this))
+                "🟢  Mode simple ACTIVÉ (image de la porte)"
+            else
+                "⚪  Mode simple désactivé (cet écran par défaut)"
+        }
+        uiModeBtn.setOnClickListener {
+            Prefs.setUiModeSimple(this, !Prefs.uiModeSimple(this))
+            paintUiMode()
+            DebugLog.log("MainActivity", "uiModeSimple = ${Prefs.uiModeSimple(this)}")
+        }
+        paintUiMode()
+        root.addView(uiModeBtn)
+        root.addView(TextView(this).apply {
+            text = "Activé = à la prochaine ouverture de l'app, l'écran d'accueil affiche " +
+                "directement l'image de la porte, sans rien d'autre. Cet écran-ci (tous les " +
+                "réglages) reste accessible via la petite roue ⚙ en bas à droite. " +
+                "À activer sur le téléphone de maman, pas sur celui de test."
+            textSize = 12.5f; setTextColor(Ui.MUTED)
+            layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
+        })
+
         // Section MODE (transition sans-HA) — interrupteur « bypass ».
         // OFF (défaut) = comportement historique via HA → rien ne casse (à laisser sur le tél de maman).
         // ON = vidéo + voix EN DIRECT à la sonnette (RTSP + LAN, sans HA) quand on est à la maison.

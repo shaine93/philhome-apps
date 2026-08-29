@@ -16,3 +16,4 @@ local.properties
 
 # Logs runtime tirés des téléphones : contiennent des URLs de webhook HA (secrets) en clair.
 DEBUG/*.log
+apps/sonnette-video/tools/dsp-bench/.build/

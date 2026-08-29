@@ -250,31 +250,60 @@ class RelayTransport(private val doorbellIp: String) : TalkTransport {
         throw IllegalStateException("relais HA ($ATTEMPTS essais) : $lastErr")
     }
 
-    /** Une tentative de connexion. @return null si OK, sinon le message d'erreur. */
+    /**
+     * Une tentative de connexion. @return null si OK, sinon le message d'erreur.
+     *
+     * Deux étapes, TOUTES DEUX requises avant de considérer la session comme établie :
+     *  1. Handshake HTTP du WebSocket (onOpen) — prouve juste que HA est joignable.
+     *  2. Message "ready" envoyé par HA — PREUVE RÉELLE que HA a obtenu un ACK physique de
+     *     la sonnette (AqaraLanTalkClient.connect() côté talk_ws.py). Avant ce 2e palier
+     *     (ajouté le 2026-08-29), l'étape 1 seule faisait croire l'app "prête" alors que HA
+     *     n'avait même pas encore tenté de joindre la sonnette — ni détecté qu'elle est
+     *     parfois occupée par la session du message d'accueil auto (GreetingSender), qui
+     *     tourne en parallèle dès la sonnerie et peut encore tenir le canal voix (un seul
+     *     autorisé à la fois côté sonnette). Le retry existant (3 essais, 1.2s d'écart)
+     *     absorbe cette collision : si la sonnette répond "refusée", on retente un peu plus
+     *     tard, quand le message d'accueil a fini.
+     */
     private fun tryConnect(url: String, token: String): String? {
         val req = Request.Builder()
             .url(url)
             .addHeader("Authorization", "Bearer $token")
             .build()
-        val latch = CountDownLatch(1)
+        val openLatch = CountDownLatch(1)
+        val readyLatch = CountDownLatch(1)
         val failure = java.util.concurrent.atomic.AtomicReference<String?>(null)
         val sock = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 DebugLog.log("RelayTransport", "onOpen HTTP ${response.code}")
-                latch.countDown()
+                openLatch.countDown()
+            }
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                DebugLog.log("RelayTransport", "message HA: $text")
+                if (text == "ready") {
+                    readyLatch.countDown()
+                } else if (text.startsWith("error")) {
+                    failure.set(text)
+                    readyLatch.countDown()
+                }
             }
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 failure.set((t.message ?: "échec WebSocket") + (response?.let { " (HTTP ${it.code})" } ?: ""))
                 DebugLog.log("RelayTransport", "onFailure", t)
-                latch.countDown()
+                openLatch.countDown()
+                readyLatch.countDown()
             }
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 DebugLog.log("RelayTransport", "onClosed $code $reason")
+                readyLatch.countDown()
             }
         })
-        if (!latch.await(8, TimeUnit.SECONDS)) { sock.cancel(); return "pas de réponse (timeout 8s)" }
-        val f = failure.get()
-        if (f != null) { sock.cancel(); return f }
+        if (!openLatch.await(8, TimeUnit.SECONDS)) { sock.cancel(); return "pas de réponse (timeout 8s)" }
+        failure.get()?.let { sock.cancel(); return it }
+        // Étape 2 : vraie confirmation côté sonnette (ou erreur/fermeture) — 5s suffisent, HA
+        // envoie "ready" dès qu'AqaraLanTalkClient.connect() revient (opération LAN rapide).
+        if (!readyLatch.await(5, TimeUnit.SECONDS)) { sock.cancel(); return "pas de confirmation sonnette (timeout 5s)" }
+        failure.get()?.let { sock.cancel(); return it }
         ws = sock
         return null
     }

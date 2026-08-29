@@ -39,15 +39,27 @@
         android:theme="@style/Theme.Material3.DayNight.NoActionBar"
         android:usesCleartextTraffic="false">
 
-        <!-- Écran d'accueil / lanceur : ouvrir une fois pour autoriser + tester -->
+        <!-- Lanceur : aiguille vers SimpleHomeActivity (mode Maman) ou MainActivity (mode
+             avancé) selon Prefs.uiModeSimple — voir HomeActivity. -->
         <activity
-            android:name=".MainActivity"
-            android:exported="true">
+            android:name=".HomeActivity"
+            android:exported="true"
+            android:theme="@style/Theme.Material3.DayNight.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Écran d'accueil historique (mode avancé) : compteur, tests, réglages, diagnostic. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true" />
+
+        <!-- Écran d'accueil simplifié (mode Maman) : image de la porte, rien d'autre. -->
+        <activity
+            android:name=".SimpleHomeActivity"
+            android:exported="false" />
 
         <!-- Ecran d'appel : s'affiche par-dessus le verrouillage, allume l'ecran -->
         <activity

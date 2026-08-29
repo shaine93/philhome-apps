@@ -15,6 +15,7 @@ object Prefs {
     private const val KEY_DIRECT_LAN = "direct_lan_enabled"
     private const val KEY_MEETING = "meeting_mode_enabled"
     private const val KEY_WIND_LEVEL = "wind_filter_level"
+    private const val KEY_UI_MODE = "ui_mode"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
 
@@ -50,4 +51,17 @@ object Prefs {
         2 -> 1.4
         else -> 1.0
     }
+
+    /**
+     * Écran d'accueil : "advanced" (défaut, comportement historique — compteur, tests,
+     * réglages, diagnostic, TOUT visible directement) ou "simple" (image de la porte en
+     * direct, un seul geste, rien d'autre — pour un téléphone destiné à un utilisateur qui
+     * n'a besoin de rien d'autre, ex. celui de la mère de Philippe). Bascule volontaire
+     * uniquement (bouton dans les réglages avancés) — jamais changé silencieusement au
+     * premier lancement d'une mise à jour, pour ne pas surprendre un téléphone déjà en usage.
+     */
+    fun uiModeSimple(ctx: Context): Boolean = sp(ctx).getString(KEY_UI_MODE, "advanced") == "simple"
+
+    fun setUiModeSimple(ctx: Context, simple: Boolean) =
+        sp(ctx).edit().putString(KEY_UI_MODE, if (simple) "simple" else "advanced").apply()
 }
