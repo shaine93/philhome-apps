@@ -52,10 +52,14 @@ object IncomingCallNotifier {
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        // ROUGE : refuse / ferme (arrête le FGS via le receiver).
+        // ROUGE : refuse / ferme (arrête le FGS via le receiver). call_id porté pour que
+        // l'arrêt soit scopé — ne doit jamais couper un appel plus récent que celui-ci.
         val declinePi = PendingIntent.getBroadcast(
             ctx, 2,
-            Intent(ctx, CallActionReceiver::class.java).apply { action = CallActionReceiver.ACTION_DECLINE },
+            Intent(ctx, CallActionReceiver::class.java).apply {
+                action = CallActionReceiver.ACTION_DECLINE
+                putExtra("call_id", callId)
+            },
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 

@@ -38,11 +38,15 @@ import kotlin.random.Random
  *
  * @param host IP LAN de la sonnette (utilisée telle quelle en direct, et passée à HA en relais).
  * @param useRelay true = relais HA (défaut, pour la 5G) ; false = direct LAN.
+ * @param captureDir si non-null (voir [Prefs.audioCaptureEnabled]), enregistre le micro BRUT et
+ *   le signal FILTRÉ dans deux .wav de ce dossier — pour mesurer le filtre anti-vent sur un
+ *   vrai test terrain au lieu de deviner les réglages. Diagnostic uniquement.
  */
 class DoorbellTalk(
     private val host: String,
     private val useRelay: Boolean = true,
-    private val sensitivity: Double = 1.0
+    private val sensitivity: Double = 1.0,
+    private val captureDir: java.io.File? = null
 ) {
     companion object {
         private const val TAG = "DoorbellTalk"
@@ -133,6 +137,23 @@ class DoorbellTalk(
         val info = MediaCodec.BufferInfo()
         var totalSamples = 0L
 
+        // Best-effort : la capture diagnostic ne doit JAMAIS empêcher un vrai talk-back (ex.
+        // stockage externe indisponible) — toute erreur ici désactive juste la capture.
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
+        var rawWriter: WavWriter? = null
+        var filteredWriter: WavWriter? = null
+        if (captureDir != null) {
+            try {
+                rawWriter = WavWriter(java.io.File(captureDir, "capture-$stamp-brut.wav"), SR)
+                filteredWriter = WavWriter(java.io.File(captureDir, "capture-$stamp-filtre.wav"), SR)
+                DebugLog.log(TAG, "capture debug ACTIVE → capture-$stamp-{brut,filtre}.wav")
+            } catch (e: Exception) {
+                DebugLog.log(TAG, "capture debug indisponible (ignorée, talk-back continue)", e)
+                try { rawWriter?.close() } catch (_: Exception) {}
+                rawWriter = null; filteredWriter = null
+            }
+        }
+
         rec.startRecording()
         DebugLog.log(TAG, "capture micro active (16 kHz mono) — envoi de l'AAC en cours")
         onState("active")
@@ -140,49 +161,75 @@ class DoorbellTalk(
         var consecutiveOk = 0
         var readyNotified = false
 
-        while (running) {
-            val n = rec.read(pcm, 0, pcm.size)
-            if (n <= 0) continue
+        try {
+            while (running) {
+                val n = rec.read(pcm, 0, pcm.size)
+                if (n <= 0) continue
 
-            filter.process(pcm, n, onGain)   // « uniquement la voix »
-
-            for (i in 0 until n) {
-                val v = pcm[i].toInt()
-                pcmBytes[2 * i] = (v and 0xFF).toByte()
-                pcmBytes[2 * i + 1] = ((v shr 8) and 0xFF).toByte()
-            }
-
-            val inIdx = enc.dequeueInputBuffer(10_000)
-            if (inIdx >= 0) {
-                val ib = enc.getInputBuffer(inIdx)!!
-                ib.clear(); ib.put(pcmBytes, 0, n * 2)
-                enc.queueInputBuffer(inIdx, 0, n * 2, totalSamples * 1_000_000L / SR, 0)
-                totalSamples += n
-            }
-
-            var outIdx = enc.dequeueOutputBuffer(info, 0)
-            while (outIdx >= 0) {
-                if (info.size > 0 && (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
-                    val ob = enc.getOutputBuffer(outIdx)!!
-                    // Trame ADTS complète = en-tête ADTS 7 o + AAC brut (ce que la sonnette attend).
-                    val frame = ByteArray(7 + info.size)
-                    System.arraycopy(AqaraTalkProtocol.adtsHeader(info.size), 0, frame, 0, 7)
-                    ob.position(info.offset)
-                    ob.get(frame, 7, info.size)
-                    val ok = tr.sendAdtsFrame(frame)
-                    if (++sent % 100L == 0L) DebugLog.log(TAG, "$sent trames AAC envoyées")
-                    // « ready » = confirmation RÉELLE que les trames partent en continu, pas un
-                    // minuteur à l'aveugle — évite le mot avalé pendant que la connexion se stabilise.
-                    if (ok) consecutiveOk++ else consecutiveOk = 0
-                    if (!readyNotified && consecutiveOk >= READY_FRAMES) {
-                        readyNotified = true
-                        DebugLog.log(TAG, "pipe confirmé chaud ($READY_FRAMES trames d'affilée) → ready")
-                        onState("ready")
+                // AVANT filtre — signal micro brut. Best-effort : un échec d'écriture EN COURS DE
+                // SESSION (stockage plein, etc.) désactive juste la capture, ne doit jamais couper
+                // le talk-back réel (trouvé en review Codex après le premier passage best-effort
+                // qui ne couvrait que l'ouverture des fichiers, pas les écritures elles-mêmes).
+                if (rawWriter != null) {
+                    try { rawWriter.writeSamples(pcm, n) } catch (e: Exception) {
+                        DebugLog.log(TAG, "capture brut: écriture échouée, capture désactivée", e)
+                        try { rawWriter.close() } catch (_: Exception) {}
+                        rawWriter = null
                     }
                 }
-                enc.releaseOutputBuffer(outIdx, false)
-                outIdx = enc.dequeueOutputBuffer(info, 0)
+
+                filter.process(pcm, n, onGain)   // « uniquement la voix »
+
+                if (filteredWriter != null) {   // APRÈS filtre — ce qui part réellement
+                    try { filteredWriter.writeSamples(pcm, n) } catch (e: Exception) {
+                        DebugLog.log(TAG, "capture filtrée: écriture échouée, capture désactivée", e)
+                        try { filteredWriter.close() } catch (_: Exception) {}
+                        filteredWriter = null
+                    }
+                }
+
+                for (i in 0 until n) {
+                    val v = pcm[i].toInt()
+                    pcmBytes[2 * i] = (v and 0xFF).toByte()
+                    pcmBytes[2 * i + 1] = ((v shr 8) and 0xFF).toByte()
+                }
+
+                val inIdx = enc.dequeueInputBuffer(10_000)
+                if (inIdx >= 0) {
+                    val ib = enc.getInputBuffer(inIdx)!!
+                    ib.clear(); ib.put(pcmBytes, 0, n * 2)
+                    enc.queueInputBuffer(inIdx, 0, n * 2, totalSamples * 1_000_000L / SR, 0)
+                    totalSamples += n
+                }
+
+                var outIdx = enc.dequeueOutputBuffer(info, 0)
+                while (outIdx >= 0) {
+                    if (info.size > 0 && (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                        val ob = enc.getOutputBuffer(outIdx)!!
+                        // Trame ADTS complète = en-tête ADTS 7 o + AAC brut (ce que la sonnette attend).
+                        val frame = ByteArray(7 + info.size)
+                        System.arraycopy(AqaraTalkProtocol.adtsHeader(info.size), 0, frame, 0, 7)
+                        ob.position(info.offset)
+                        ob.get(frame, 7, info.size)
+                        val ok = tr.sendAdtsFrame(frame)
+                        if (++sent % 100L == 0L) DebugLog.log(TAG, "$sent trames AAC envoyées")
+                        // « ready » = confirmation RÉELLE que les trames partent en continu, pas un
+                        // minuteur à l'aveugle — évite le mot avalé pendant que la connexion se stabilise.
+                        if (ok) consecutiveOk++ else consecutiveOk = 0
+                        if (!readyNotified && consecutiveOk >= READY_FRAMES) {
+                            readyNotified = true
+                            DebugLog.log(TAG, "pipe confirmé chaud ($READY_FRAMES trames d'affilée) → ready")
+                            onState("ready")
+                        }
+                    }
+                    enc.releaseOutputBuffer(outIdx, false)
+                    outIdx = enc.dequeueOutputBuffer(info, 0)
+                }
             }
+        } finally {
+            rawWriter?.close()
+            filteredWriter?.close()
+            if (captureDir != null) DebugLog.log(TAG, "capture debug terminée: capture-$stamp-{brut,filtre}.wav")
         }
     }
 

@@ -208,6 +208,31 @@ class MainActivity : Activity() {
             layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
         })
 
+        // Capture diagnostic (micro brut + filtré dans deux .wav) pour MESURER le filtre sur un
+        // vrai test terrain au lieu de deviner les réglages — voir tools/dsp-bench. À activer
+        // juste avant un test dehors, désactiver après (fichiers dans le dossier debug de l'app).
+        val captureBtn = secondaryBtn("") {}
+        fun paintCapture() {
+            captureBtn.text = if (Prefs.audioCaptureEnabled(this))
+                "🔴  Capture micro (test vent) ACTIVÉE"
+            else
+                "⚪  Capture micro (test vent) désactivée"
+        }
+        captureBtn.setOnClickListener {
+            Prefs.setAudioCaptureEnabled(this, !Prefs.audioCaptureEnabled(this))
+            paintCapture()
+            DebugLog.log("MainActivity", "audioCaptureEnabled = ${Prefs.audioCaptureEnabled(this)}")
+        }
+        paintCapture()
+        root.addView(captureBtn)
+        root.addView(TextView(this).apply {
+            text = "Active AVANT un test terrain (dehors, vent réel) : enregistre le micro brut " +
+                "et le signal filtré dans deux .wav pendant le prochain talk-back. Récupérables via " +
+                "adb pull, à rejouer avec tools/dsp-bench. Désactive après le test."
+            textSize = 12.5f; setTextColor(Ui.MUTED)
+            layoutParams = lp(dp(6)).apply { leftMargin = dp(4) }
+        })
+
         // Section MESSAGE D'ACCUEIL — envoyé automatiquement à la sonnette dès qu'elle sonne,
         // que quelqu'un décroche ou non côté téléphone. Enregistré une fois, réutilisé à chaque sonnerie.
         root.addView(sectionLabel("Message d'accueil sonnette"))

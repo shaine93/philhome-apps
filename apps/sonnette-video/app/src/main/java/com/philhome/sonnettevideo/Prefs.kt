@@ -15,6 +15,7 @@ object Prefs {
     private const val KEY_DIRECT_LAN = "direct_lan_enabled"
     private const val KEY_MEETING = "meeting_mode_enabled"
     private const val KEY_WIND_LEVEL = "wind_filter_level"
+    private const val KEY_AUDIO_CAPTURE = "audio_capture_debug"
     private const val KEY_UI_MODE = "ui_mode"
 
     private fun sp(ctx: Context) = ctx.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -51,6 +52,17 @@ object Prefs {
         2 -> 1.4
         else -> 1.0
     }
+
+    /**
+     * Diagnostic terrain UNIQUEMENT : quand activé, [DoorbellTalk] enregistre le micro brut ET
+     * le signal filtré dans deux .wav (dossier debug), pour mesurer le filtre anti-vent sur un
+     * vrai test au lieu de deviner — voir `tools/dsp-bench`. Défaut désactivé (pas de fichiers
+     * écrits en usage normal). Pas d'auto-désactivation : à couper manuellement après le test.
+     */
+    fun audioCaptureEnabled(ctx: Context): Boolean = sp(ctx).getBoolean(KEY_AUDIO_CAPTURE, false)
+
+    fun setAudioCaptureEnabled(ctx: Context, enabled: Boolean) =
+        sp(ctx).edit().putBoolean(KEY_AUDIO_CAPTURE, enabled).apply()
 
     /**
      * Écran d'accueil : "advanced" (défaut, comportement historique — compteur, tests,

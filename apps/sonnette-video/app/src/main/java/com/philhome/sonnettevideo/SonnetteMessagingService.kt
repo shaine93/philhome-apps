@@ -45,10 +45,30 @@ class SonnetteMessagingService : FirebaseMessagingService() {
                 GreetingSender.sendToDoorbell(applicationContext)
             }
             "cancel" -> {                                  // visiteur reparti / déjà répondu sur l'autre tél
-                DebugLog.push("Coord", "CANCEL reçu → arrêt service d'appel + broadcast")
-                CallForegroundService.stop(this)
-                // ferme aussi l'écran d'appel s'il est ouvert (broadcast interne au package)
-                sendBroadcast(Intent(IncomingCallActivity.ACTION_CANCEL_CALL).setPackage(packageName))
+                // SCOPÉ par call_id (2026-08-29, incident terrain) : un "cancel" en retard pour un
+                // appel déjà terminé ne doit JAMAIS fermer/couper un appel plus récent affiché
+                // depuis. CallForegroundService.stop et l'écran d'appel vérifient chacun eux-mêmes
+                // que ce call_id correspond bien à ce qu'ils portent actuellement avant d'agir.
+                val cancelCallId = data["call_id"]
+                if (cancelCallId.isNullOrBlank()) {
+                    // Payload distant incomplet (legacy/malformé) : contrairement à un arrêt LOCAL
+                    // (bouton Raccrocher, où null = "on sait ce qu'on ferme"), un cancel DISTANT
+                    // sans call_id est une donnée non fiable — CallForegroundService.stop(ctx, null)
+                    // arrête sans condition, donc ne JAMAIS lui passer un null venu du réseau ici,
+                    // sous peine de couper un appel actif plus récent sans rapport. Trouvé en
+                    // review Codex, 2026-08-29. (return interdit ici : sauterait la re-confirmation
+                    // du token FCM plus bas dans la fonction.)
+                    DebugLog.push("Coord", "CANCEL reçu SANS call_id → ignoré (payload non fiable)")
+                } else {
+                    DebugLog.push("Coord", "CANCEL reçu (call_id=$cancelCallId) → arrêt scopé + broadcast")
+                    CallForegroundService.stop(this, cancelCallId)
+                    // ferme aussi l'écran d'appel s'il est ouvert (broadcast interne au package)
+                    sendBroadcast(
+                        Intent(IncomingCallActivity.ACTION_CANCEL_CALL)
+                            .setPackage(packageName)
+                            .putExtra("call_id", cancelCallId)
+                    )
+                }
             }
             // Présence / livreur détecté par l'IA (personne qui s'approche SANS sonner) : notif DOUCE
             // avec photo, PAS d'écran d'appel, PAS de sonnerie. Téléchargement photo → thread.

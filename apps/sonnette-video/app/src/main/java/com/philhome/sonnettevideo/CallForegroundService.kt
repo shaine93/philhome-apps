@@ -83,6 +83,9 @@ class CallForegroundService : Service() {
         if (!imageUrl.isNullOrBlank()) {
             Thread {
                 val bmp = IncomingCallNotifier.loadBitmap(imageUrl) ?: return@Thread
+                // Un appel plus récent a pu démarrer pendant ce téléchargement (réseau lent) —
+                // ne JAMAIS écraser sa notif avec la photo de l'ancien appel.
+                if (activeCallId != callId) return@Thread
                 val withPhoto = IncomingCallNotifier.build(
                     this, title, callId, imageUrl, largeIcon = bmp, withFullScreen = false
                 )
@@ -120,8 +123,17 @@ class CallForegroundService : Service() {
         const val EXTRA_CALL_ID = "call_id"
         const val EXTRA_IMAGE_URL = "image_url"
 
+        /**
+         * Identifiant de l'appel actuellement porté par ce service — permet à [stop] de
+         * refuser d'arrêter un appel qui n'est plus le bon (ex. un "cancel" en retard pour un
+         * appel déjà terminé ne doit JAMAIS couper un appel plus récent). Ajouté le 2026-08-29
+         * suite à un vrai incident terrain : mécanisme d'arrêt non filtré par call_id.
+         */
+        @Volatile private var activeCallId: String? = null
+
         /** Démarre l'appel entrant (depuis le push FCM ou le bouton de test). */
         fun ring(ctx: Context, title: String, callId: String, imageUrl: String?) {
+            activeCallId = callId
             val i = Intent(ctx, CallForegroundService::class.java).apply {
                 action = ACTION_RING
                 putExtra(EXTRA_TITLE, title)
@@ -131,8 +143,19 @@ class CallForegroundService : Service() {
             ContextCompat.startForegroundService(ctx, i)
         }
 
-        /** Arrête l'appel (Refuser / Raccrocher / annulation distante). */
-        fun stop(ctx: Context) {
+        /**
+         * Arrête l'appel (Refuser / Raccrocher / annulation distante).
+         * @param callId si fourni, n'arrête QUE si c'est bien l'appel actuellement porté par ce
+         *   service — une annulation/action pour un ANCIEN appel ne doit jamais couper un appel
+         *   plus récent. `null` = arrêt inconditionnel (ex. bouton "Raccrocher" local, où l'appel
+         *   affiché EST par définition celui qu'on veut arrêter).
+         */
+        fun stop(ctx: Context, callId: String? = null) {
+            if (callId != null && activeCallId != null && callId != activeCallId) {
+                Log.w(TAG, "stop(callId=$callId) ignoré — appel actif différent ($activeCallId)")
+                return
+            }
+            activeCallId = null
             // stopService suffit à déclencher onDestroy ; on évite startForegroundService
             // ici (sinon obligation d'appeler startForeground sous 5 s).
             ctx.stopService(Intent(ctx, CallForegroundService::class.java))

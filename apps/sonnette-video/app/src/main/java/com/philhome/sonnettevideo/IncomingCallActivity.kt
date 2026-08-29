@@ -55,11 +55,23 @@ class IncomingCallActivity : Activity() {
     @Volatile private var onLan = false            // sonnette joignable en LAN → chemin direct sans HA
     private var callId: String? = null            // identifiant d'appel (coordination multi-appareils)
     private var cancelRegistered = false
+    private var answered = false   // true dès showAnswered() — protège une conversation en cours
+    // Incrémenté à chaque (re)démarrage de session d'appel — les callbacks async (sonde LAN,
+    // boucle instantané) capturent leur génération et s'auto-annulent s'ils ne correspondent
+    // plus à la session courante. Ajouté le 2026-08-29 (incident terrain, voir replaceWithNewCall).
+    @Volatile private var sessionGen = 0
 
     // Un autre téléphone a décroché (ou le visiteur est parti) → HA a poussé "cancel" → on ferme.
+    // SCOPÉ par call_id (2026-08-29) : un cancel en retard pour un appel déjà terminé ne doit
+    // JAMAIS fermer un appel plus récent affiché depuis — voir CallForegroundService.stop().
     private val cancelReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            DebugLog.log("IncomingCall", "cancel reçu (répondu ailleurs / annulé) → fermeture")
+            val cancelCallId = intent?.getStringExtra("call_id")
+            if (cancelCallId == null || cancelCallId != callId) {
+                DebugLog.log("IncomingCall", "cancel ignoré (call_id=$cancelCallId, appel affiché=$callId)")
+                return
+            }
+            DebugLog.log("IncomingCall", "cancel reçu (répondu ailleurs / annulé, call_id=$cancelCallId) → fermeture")
             endCall()
         }
     }
@@ -136,9 +148,76 @@ class IncomingCallActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.getStringExtra("call_id")?.let { callId = it }
-        DebugLog.log("IncomingCall", "onNewIntent action=${intent.action}")
-        if (intent.action == "ANSWER") showAnswered()
+        val incomingCallId = intent.getStringExtra("call_id")
+        DebugLog.log("IncomingCall", "onNewIntent action=${intent.action} call_id=$incomingCallId (affiché=$callId)")
+        when {
+            // Sonnerie pour un AUTRE appel que celui affiché : incident terrain du 2026-08-29 —
+            // un vieil appel resté ouvert (ex. test oublié) avalait silencieusement la vraie
+            // sonnerie suivante (call_id mis à jour en douce, écran resté sur l'ancien état).
+            // Remplacement complet, qu'on soit en sonnerie OU en communication : mieux vaut
+            // risquer d'interrompre un appel qui traînait que de rater un vrai visiteur — voir
+            // discussion avec Codex, 2026-08-29.
+            intent.action == "RINGING" && !incomingCallId.isNullOrBlank() && incomingCallId != callId ->
+                replaceWithNewCall(incomingCallId)
+            // Doublon (même call_id) : idempotent, ne rien refaire (juste rafraîchir l'intent stocké).
+            intent.action == "RINGING" -> DebugLog.log("IncomingCall", "RINGING dupliqué (même call_id) — ignoré")
+            // Répondre à l'appel déjà affiché : cas normal.
+            intent.action == "ANSWER" && (incomingCallId == null || incomingCallId == callId) -> showAnswered()
+            // Répondre à un appel DIFFÉRENT de celui affiché : arrive si l'écran était déjà allumé
+            // au moment du nouvel appel (notif heads-up sans intent plein-écran RINGING) — le geste
+            // « Répondre » de CETTE notif porte le NOUVEL call_id. Remplacer puis décrocher, sinon
+            // le visiteur réel n'est jamais pris en charge (trouvé en review Codex, 2026-08-29).
+            intent.action == "ANSWER" && !incomingCallId.isNullOrBlank() -> {
+                replaceWithNewCall(incomingCallId)
+                showAnswered()
+            }
+        }
+    }
+
+    /**
+     * Un NOUVEL appel (call_id différent) arrive pendant que celui-ci est affiché (sonnerie ou
+     * déjà décroché) : on ferme proprement TOUT l'état de l'ancien avant de repartir à zéro sur
+     * le nouveau — jamais un simple changement de `callId` sous un écran qui ne bouge pas.
+     */
+    private fun replaceWithNewCall(newCallId: String) {
+        DebugLog.log("IncomingCall", "Remplacement complet : $callId → $newCallId")
+        sessionGen++   // périme tout callback async (sonde LAN, boucle instantané) de l'ancienne session
+        stopRinging()
+        stopTalk()
+        stopVideo()             // détruit webrtc → WebrtcVideo.destroy() invalide définitivement videoWeb
+        recreateVideoWeb()      // Android interdit de réutiliser un WebView après destroy() (trouvé en review Codex)
+        stopSnapshotRefresh()
+        talkIndicator.removeCallbacks(showSpeakNow)
+        talkIndicator.visibility = View.GONE
+        AudioRouter.reset(this)
+        gateOpen = false
+        onLan = false
+        answered = false
+        callId = newCallId
+        snapshot.visibility = View.VISIBLE
+        statusText.text = "Quelqu'un sonne à la porte"
+        startVideo()
+        showRinging()
+    }
+
+    /**
+     * Remplace [videoWeb] par un WebView neuf, à la même place dans la hiérarchie de vues.
+     * Nécessaire après [stopVideo] : `WebrtcVideo.destroy()` appelle `WebView.destroy()`, et
+     * Android interdit formellement de réutiliser un WebView après ça (vue invalidée pour de
+     * bon) — sans ça, le chemin vidéo HA/WebRTC (le chemin par défaut) casse silencieusement
+     * sur tout appel qui remplace un appel précédent. Trouvé en review Codex, 2026-08-29.
+     */
+    private fun recreateVideoWeb() {
+        val parent = videoWeb.parent as? android.view.ViewGroup
+        val index = parent?.indexOfChild(videoWeb) ?: -1
+        if (parent != null && index >= 0) parent.removeViewAt(index)
+        videoWeb = WebView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(MATCH, MATCH)
+            setBackgroundColor(Color.BLACK)
+        }
+        if (parent != null) {
+            if (index in 0..parent.childCount) parent.addView(videoWeb, index) else parent.addView(videoWeb)
+        }
     }
 
     /* ---------- États d'écran ---------- */
@@ -167,8 +246,9 @@ class IncomingCallActivity : Activity() {
     }
 
     private fun showAnswered() {
+        answered = true
         stopRinging()                        // coupe la sonnerie alarme
-        CallForegroundService.stop(this)     // coupe le FGS sonnerie quand on décroche
+        CallForegroundService.stop(this, callId)  // coupe le FGS sonnerie quand on décroche (scopé)
         CallCoordinator.answered(callId)     // prévient HA → coupe la sonnerie sur les AUTRES téléphones
         statusText.text = "En communication"
         AudioRouter.toSpeaker(this)          // A12 : haut-parleur mains libres
@@ -204,16 +284,19 @@ class IncomingCallActivity : Activity() {
 
     /** Termine l'appel proprement : Refuser / Raccrocher / annulation distante (cancel). */
     private fun endCall() {
+        sessionGen++   // périme les callbacks async restants (sonde LAN, boucle instantané)
         stopRinging()
         stopTalk()
         stopVideo()
         stopSnapshotRefresh()
         AudioRouter.reset(this)
-        CallForegroundService.stop(this)   // coupe le FGS + sa notif
+        answered = false
+        CallForegroundService.stop(this, callId)   // coupe le FGS + sa notif (scopé)
         finishAndRemoveTask()
     }
 
     override fun onDestroy() {
+        sessionGen++   // périme tout callback async restant
         if (cancelRegistered) {
             try { unregisterReceiver(cancelReceiver) } catch (_: Exception) {}
             cancelRegistered = false
@@ -222,6 +305,7 @@ class IncomingCallActivity : Activity() {
         stopTalk()
         stopVideo()
         stopSnapshotRefresh()
+        AudioRouter.reset(this)   // le routage haut-parleur ne doit jamais survivre à une destruction anormale
         super.onDestroy()
     }
 
@@ -233,14 +317,22 @@ class IncomingCallActivity : Activity() {
         val sensitivity = Prefs.windSensitivity(this)
         DebugLog.log("IncomingCall", "startTalk vers $doorbellIp (${if (onLan) "DIRECT LAN" else "relais HA"}, sensibilité=$sensitivity)")
         setTalkState("connecting")
+        val captureDir = if (Prefs.audioCaptureEnabled(this))
+            java.io.File(getExternalFilesDir(null), "debug").apply { mkdirs() } else null
+        // Génération capturée : stopTalk() n'attend pas la fin du worker précédent (juste
+        // interrupt()) — sans ce garde-fou, un callback tardif de l'ANCIENNE session de talk
+        // (ex. son "stopped" final) peut arriver après qu'une NOUVELLE session ait démarré et
+        // écraser son indicateur/gain. Trouvé en review Codex, 2026-08-29.
+        val myGen = sessionGen
         // En LAN : talk DIRECT à la sonnette (sans HA). Hors LAN : relais HA (5G).
-        talk = DoorbellTalk(doorbellIp, useRelay = !onLan, sensitivity = sensitivity).also {
+        talk = DoorbellTalk(doorbellIp, useRelay = !onLan, sensitivity = sensitivity, captureDir = captureDir).also {
             it.start(
                 onState = { state ->
+                    if (myGen != sessionGen) return@start
                     DebugLog.log("IncomingCall", "talk: $state")
                     setTalkState(state)
                 },
-                onGain = { gain -> duckIncomingAudio(gain) }
+                onGain = { gain -> if (myGen == sessionGen) duckIncomingAudio(gain) }
             )
         }
     }
@@ -317,8 +409,10 @@ class IncomingCallActivity : Activity() {
      */
     private fun startVideo() {
         val directPref = Prefs.directLan(this)
+        val myGen = sessionGen
         thread(name = "lan-probe") {
             val useDirect = directPref && Lan.isDoorbellOnLan(this)
+            if (myGen != sessionGen) return@thread   // session remplacée/terminée pendant la sonde
             onLan = useDirect
             DebugLog.log("IncomingCall", "chemin: " + when {
                 useDirect -> "RTSP DIRECT (sans HA)"
@@ -326,7 +420,7 @@ class IncomingCallActivity : Activity() {
                 else -> "WebRTC/HA (mode direct OFF)"
             })
             runOnUiThread {
-                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (isFinishing || isDestroyed || myGen != sessionGen) return@runOnUiThread
                 if (useDirect) startVideoDirect() else startVideoHa()
             }
         }
@@ -379,9 +473,14 @@ class IncomingCallActivity : Activity() {
     private fun startSnapshotRefresh() {
         if (Config.HA_LONG_LIVED_TOKEN.isBlank() || snapshotRunning) return
         snapshotRunning = true
+        val myGen = sessionGen
         thread(name = "snapshot") {
             var first = true
-            while (snapshotRunning) {
+            // myGen : une ancienne boucle qui dormait encore (Thread.sleep) ne doit pas repartir
+            // pour toujours si une NOUVELLE session remet snapshotRunning=true entre-temps — sans
+            // ça, deux boucles tournent en même temps sur le même drapeau partagé.
+            while (snapshotRunning && myGen == sessionGen) {
+                val callIdAtRequest = callId   // capturé AVANT la requête réseau, pour l'archive
                 try {
                     val req = Request.Builder()
                         .url(Config.cameraSnapshotUrl())
@@ -389,10 +488,14 @@ class IncomingCallActivity : Activity() {
                         .build()
                     Net.base.newBuilder().callTimeout(8, TimeUnit.SECONDS).build()
                         .newCall(req).execute().use { resp ->
+                            // Une requête en vol au moment d'un remplacement d'appel peut revenir
+                            // APRÈS coup — revérifier ici (pas juste au tour de boucle précédent)
+                            // avant de toucher l'UI ou d'archiver sous le call_id du NOUVEL appel.
+                            if (myGen != sessionGen) return@use
                             val bytes = if (resp.isSuccessful) resp.body?.bytes() else null
                             val bmp = bytes?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
                             if (bmp != null) runOnUiThread {
-                                if (snapshot.visibility == View.VISIBLE) snapshot.setImageBitmap(bmp)
+                                if (myGen == sessionGen && snapshot.visibility == View.VISIBLE) snapshot.setImageBitmap(bmp)
                             }
                             if (first) {
                                 DebugLog.log("IncomingCall", "snapshot ${if (bmp != null) "OK (refresh)" else "vide (HTTP ${resp.code})"}")
@@ -401,7 +504,7 @@ class IncomingCallActivity : Activity() {
                                 // téléchargement a échoué) — cette image de l'aperçu live sert alors de
                                 // photo archivée. Dédupliqué par call_id : sans effet si déjà archivée.
                                 if (bmp != null) {
-                                    DeliveryStore.recordForCall(this@IncomingCallActivity, callId, "Sonnette", "Sonnette", bmp)
+                                    DeliveryStore.recordForCall(this@IncomingCallActivity, callIdAtRequest, "Sonnette", "Sonnette", bmp)
                                 }
                             }
                         }

@@ -1,1 +1,1 @@
-{ "versionCode": 26, "versionName": "0.6.0", "notes": "v0.6.0 - transition vers OTA GitHub" }
+{ "versionCode": 31, "versionName": "0.6.5", "notes": "Correctif securite appel : cancel/decline scopes par call_id, gestion d'une nouvelle sonnerie pendant un appel deja affiche" }

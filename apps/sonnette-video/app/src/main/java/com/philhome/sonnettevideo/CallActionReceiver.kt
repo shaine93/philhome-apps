@@ -18,7 +18,18 @@ class CallActionReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            ACTION_DECLINE -> CallForegroundService.stop(context)   // arrête le FGS + sa notif
+            ACTION_DECLINE -> {
+                val callId = intent.getStringExtra("call_id")
+                CallForegroundService.stop(context, callId)   // arrête le FGS + sa notif (scopé)
+                // Refuser depuis la notif (écran verrouillé, activité pas forcément ouverte) doit
+                // aussi fermer l'écran d'appel s'il est affiché — même chemin scopé que l'annulation
+                // distante, pour ne jamais fermer un appel plus récent que celui refusé.
+                context.sendBroadcast(
+                    Intent(IncomingCallActivity.ACTION_CANCEL_CALL)
+                        .setPackage(context.packageName)
+                        .putExtra("call_id", callId)
+                )
+            }
             ACTION_MUTE -> RingPlayer.stop()                        // coupe son+vibration, garde l'appel
         }
     }
