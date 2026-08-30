@@ -1,6 +1,6 @@
 {
-  "versionCode": 31,
-  "versionName": "0.6.5",
-  "notes": "Indicateur PARLEZ MAINTENANT fiable (confirmation reseau reelle), mode Maman/Avance, filtre anti-vent adaptatif, anti-Larsen automatique, IP sonnette dynamique",
+  "versionCode": 32,
+  "versionName": "0.6.6",
+  "notes": "Correctif securite critique : appels scopes par call_id (une nouvelle sonnerie pendant un appel affiche remplace proprement l'ancien au lieu d'etre silencieusement ignoree), capture audio diagnostic pour le filtre anti-vent",
   "apkUrl": "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 }
