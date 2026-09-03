@@ -142,15 +142,22 @@ class DoorbellTalk(
         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
         var rawWriter: WavWriter? = null
         var filteredWriter: WavWriter? = null
+        // DIAGNOSTIC (2026-09-03) : copie exacte des trames ADTS envoyées sur le réseau, pour
+        // pouvoir les rejouer sur un ordinateur (ffplay/VLC) et vérifier si MediaCodec produit un
+        // flux AAC valide — le protocole/relais/sonnette sont déjà prouvés fonctionnels avec un
+        // fichier AAC pré-encodé (ffmpeg), seule cette chaîne temps réel reste à isoler.
+        var sentAacFile: java.io.FileOutputStream? = null
         if (captureDir != null) {
             try {
                 rawWriter = WavWriter(java.io.File(captureDir, "capture-$stamp-brut.wav"), SR)
                 filteredWriter = WavWriter(java.io.File(captureDir, "capture-$stamp-filtre.wav"), SR)
-                DebugLog.log(TAG, "capture debug ACTIVE → capture-$stamp-{brut,filtre}.wav")
+                sentAacFile = java.io.FileOutputStream(java.io.File(captureDir, "capture-$stamp-envoye.aac"))
+                DebugLog.log(TAG, "capture debug ACTIVE → capture-$stamp-{brut,filtre,envoye.aac}")
             } catch (e: Exception) {
                 DebugLog.log(TAG, "capture debug indisponible (ignorée, talk-back continue)", e)
                 try { rawWriter?.close() } catch (_: Exception) {}
-                rawWriter = null; filteredWriter = null
+                try { sentAacFile?.close() } catch (_: Exception) {}
+                rawWriter = null; filteredWriter = null; sentAacFile = null
             }
         }
 
@@ -203,33 +210,53 @@ class DoorbellTalk(
                 }
 
                 var outIdx = enc.dequeueOutputBuffer(info, 0)
-                while (outIdx >= 0) {
-                    if (info.size > 0 && (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
-                        val ob = enc.getOutputBuffer(outIdx)!!
-                        // Trame ADTS complète = en-tête ADTS 7 o + AAC brut (ce que la sonnette attend).
-                        val frame = ByteArray(7 + info.size)
-                        System.arraycopy(AqaraTalkProtocol.adtsHeader(info.size), 0, frame, 0, 7)
-                        ob.position(info.offset)
-                        ob.get(frame, 7, info.size)
-                        val ok = tr.sendAdtsFrame(frame)
-                        if (++sent % 100L == 0L) DebugLog.log(TAG, "$sent trames AAC envoyées")
-                        // « ready » = confirmation RÉELLE que les trames partent en continu, pas un
-                        // minuteur à l'aveugle — évite le mot avalé pendant que la connexion se stabilise.
-                        if (ok) consecutiveOk++ else consecutiveOk = 0
-                        if (!readyNotified && consecutiveOk >= READY_FRAMES) {
-                            readyNotified = true
-                            DebugLog.log(TAG, "pipe confirmé chaud ($READY_FRAMES trames d'affilée) → ready")
-                            onState("ready")
+                while (outIdx != MediaCodec.INFO_TRY_AGAIN_LATER) {
+                    if (outIdx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        // DIAGNOSTIC : format réel produit par l'encodeur (csd-0 = AudioSpecificConfig).
+                        val of = enc.outputFormat
+                        val csd0 = of.getByteBuffer("csd-0")
+                        val csd0Hex = csd0?.let {
+                            val a = ByteArray(it.remaining()); it.duplicate().get(a)
+                            a.joinToString(" ") { b -> "%02X".format(b) }
+                        } ?: "absent"
+                        DebugLog.log(TAG, "encodeur: outputFormat=$of csd-0=$csd0Hex")
+                    } else if (outIdx >= 0) {
+                        if (info.size > 0 && (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+                            val ob = enc.getOutputBuffer(outIdx)!!
+                            // Trame ADTS complète = en-tête ADTS 7 o + AAC brut (ce que la sonnette attend).
+                            val frame = ByteArray(7 + info.size)
+                            System.arraycopy(AqaraTalkProtocol.adtsHeader(info.size), 0, frame, 0, 7)
+                            ob.position(info.offset)
+                            ob.limit(info.offset + info.size)
+                            ob.get(frame, 7, info.size)
+                            val ok = tr.sendAdtsFrame(frame)
+                            if (sentAacFile != null) {
+                                try { sentAacFile.write(frame) } catch (e: Exception) {
+                                    DebugLog.log(TAG, "dump AAC envoyé: écriture échouée, désactivé", e)
+                                    try { sentAacFile.close() } catch (_: Exception) {}
+                                    sentAacFile = null
+                                }
+                            }
+                            if (++sent % 100L == 0L) DebugLog.log(TAG, "$sent trames AAC envoyées")
+                            // « ready » = confirmation RÉELLE que les trames partent en continu, pas un
+                            // minuteur à l'aveugle — évite le mot avalé pendant que la connexion se stabilise.
+                            if (ok) consecutiveOk++ else consecutiveOk = 0
+                            if (!readyNotified && consecutiveOk >= READY_FRAMES) {
+                                readyNotified = true
+                                DebugLog.log(TAG, "pipe confirmé chaud ($READY_FRAMES trames d'affilée) → ready")
+                                onState("ready")
+                            }
                         }
+                        enc.releaseOutputBuffer(outIdx, false)
                     }
-                    enc.releaseOutputBuffer(outIdx, false)
                     outIdx = enc.dequeueOutputBuffer(info, 0)
                 }
             }
         } finally {
             rawWriter?.close()
             filteredWriter?.close()
-            if (captureDir != null) DebugLog.log(TAG, "capture debug terminée: capture-$stamp-{brut,filtre}.wav")
+            sentAacFile?.close()
+            if (captureDir != null) DebugLog.log(TAG, "capture debug terminée: capture-$stamp-{brut,filtre,envoye.aac}")
         }
     }
 
