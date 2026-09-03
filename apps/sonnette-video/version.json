@@ -1,6 +1,6 @@
 {
-  "versionCode": 32,
-  "versionName": "0.6.6",
-  "notes": "Correctif securite critique : appels scopes par call_id (une nouvelle sonnerie pendant un appel affiche remplace proprement l'ancien au lieu d'etre silencieusement ignoree), capture audio diagnostic pour le filtre anti-vent",
+  "versionCode": 33,
+  "versionName": "0.6.7",
+  "notes": "Fix talk-back (livreur n'entendait plus la voix) + fix audio visiteur (MODE_IN_COMMUNICATION coupait le son de la video)",
   "apkUrl": "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 }
