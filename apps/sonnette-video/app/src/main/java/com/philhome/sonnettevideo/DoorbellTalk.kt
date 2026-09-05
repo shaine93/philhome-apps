@@ -296,11 +296,24 @@ interface TalkTransport {
  * HA ouvre la session voix LAN et pousse les trames ; l'app n'envoie que l'AAC.
  */
 class RelayTransport(private val doorbellIp: String) : TalkTransport {
+    private companion object {
+        // Anti-accumulation (2026-09-05, délai croissant constaté en 5G) : le WebSocket (TCP)
+        // met les trames en FILE D'ATTENTE sans bloquer si le réseau ne suit pas (perte/gigue
+        // cellulaire) — contrairement à de l'UDP/RTP pur, qui laisserait juste tomber une trame
+        // en retard. Sans garde-fou, cette file grossit et le décalage de la conversation
+        // s'accumule au fil du temps au lieu de rester stable. On préfère perdre une trame que
+        // laisser le retard grandir : au-delà de ~6 trames (≈380 ms) en attente, on saute l'envoi
+        // au lieu d'empiler. 256 o/trame (AAC-LC 32 kbps × 64 ms) + marge pour l'entête WebSocket.
+        private const val MAX_QUEUED_BYTES = 6 * 320L
+        const val ATTEMPTS = 3
+    }
+
     private val client = Net.base.newBuilder()       // DoH : ne dépend pas du DNS du téléphone
         .pingInterval(20, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()
     private var ws: WebSocket? = null
+    private var droppedFrames = 0L
 
     override fun open() {
         val token = Config.HA_LONG_LIVED_TOKEN
@@ -382,9 +395,16 @@ class RelayTransport(private val doorbellIp: String) : TalkTransport {
         return null
     }
 
-    private companion object { const val ATTEMPTS = 3 }
-
-    override fun sendAdtsFrame(frame: ByteArray): Boolean = ws?.send(ByteString.of(*frame)) ?: false
+    override fun sendAdtsFrame(frame: ByteArray): Boolean {
+        val socket = ws ?: return false
+        if (socket.queueSize() > MAX_QUEUED_BYTES) {
+            if (++droppedFrames % 20L == 1L) {
+                DebugLog.log("RelayTransport", "file d'attente pleine (${socket.queueSize()} o) — trame sautée (total $droppedFrames)")
+            }
+            return false
+        }
+        return socket.send(ByteString.of(*frame))
+    }
 
     override fun close() {
         try { ws?.send("stop") } catch (_: Exception) {}

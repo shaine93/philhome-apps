@@ -16,6 +16,14 @@ import kotlin.concurrent.thread
  *
  * Toujours via le RELAIS HA (jamais direct LAN) : ça doit marcher immédiatement à la sonnerie,
  * qu'on soit sur le WiFi de la maison ou en 5G, sans attendre une sonde LAN.
+ *
+ * **Collision avec le talk-back (trouvée le 2026-09-04)** : la sonnette n'accepte qu'UNE session
+ * voix à la fois, mais rien ne coordonnait [sendToDoorbell] et [DoorbellTalk] — si quelqu'un
+ * décroche PENDANT l'envoi du message d'accueil (~5s, cas fréquent en usage réel), les deux
+ * sessions s'ouvrent en parallèle sur le même canal et se corrompent mutuellement (confirmé par
+ * les logs : la session talk-back obtient son ACK AVANT que la session accueil n'ait fini
+ * d'envoyer). [cancel] doit être appelé dès le décroché, AVANT [DoorbellTalk.start], pour libérer
+ * le canal proprement (STOP_VOICE) avant la nouvelle session.
  */
 object GreetingSender {
     private const val TAG = "Greeting"
@@ -24,11 +32,24 @@ object GreetingSender {
     // Cadence temps réel : la sonnette s'attend à recevoir l'audio au même rythme qu'un micro live.
     private const val CHUNK_MS = CHUNK_SAMPLES * 1000L / GreetingRecorder.SAMPLE_RATE
 
+    @Volatile private var worker: Thread? = null
+
+    /**
+     * Interrompt un envoi en cours (best-effort, sans effet s'il n'y en a pas) et attend que le
+     * transport soit refermé (STOP_VOICE envoyé) avant de rendre la main — pour garantir que le
+     * canal voix de la sonnette est libre avant qu'un autre appelant (le talk-back) l'ouvre.
+     */
+    fun cancel() {
+        val w = worker ?: return
+        w.interrupt()
+        try { w.join(500) } catch (_: InterruptedException) {}
+    }
+
     /** Best-effort, ne bloque jamais l'appelant : à lancer depuis un thread ou un service. */
     fun sendToDoorbell(ctx: Context) {
         val appCtx = ctx.applicationContext
         if (!GreetingRecorder.exists(appCtx)) return
-        thread(name = "greeting-send") {
+        worker = thread(name = "greeting-send") {
             val transport = RelayTransport(DoorbellIp.current(appCtx))
             var encoder: MediaCodec? = null
             try {

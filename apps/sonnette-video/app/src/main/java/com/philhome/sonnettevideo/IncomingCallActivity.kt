@@ -189,6 +189,8 @@ class IncomingCallActivity : Activity() {
         stopSnapshotRefresh()
         talkIndicator.removeCallbacks(showSpeakNow)
         talkIndicator.visibility = View.GONE
+        respondButton?.removeCallbacks(enableRespond)
+        GreetingSender.cancel()
         AudioRouter.reset(this)
         gateOpen = false
         onLan = false
@@ -235,7 +237,9 @@ class IncomingCallActivity : Activity() {
         }
         val buttons = bottomRow()
         buttons.addView(bigButton("Refuser", Color.parseColor("#D32F2F")) { decline() })
-        buttons.addView(bigButton("Répondre", Color.parseColor("#2E7D32")) { vibrate(); showAnswered() })
+        val reponds = bigButton("Répondre", Color.parseColor("#2E7D32")) { vibrate(); showAnswered() }
+        buttons.addView(reponds)
+        respondButton = reponds
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(MATCH, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -243,10 +247,35 @@ class IncomingCallActivity : Activity() {
             addView(buttons)
         }
         replaceBottom(container)
+
+        // Bloque « Répondre » le temps que le message d'accueil se diffuse en entier au visiteur
+        // (sinon décrocher tôt coupe l'annonce en cours — voir GreetingSender.cancel()). Le
+        // visiteur entend TOUJOURS le message complet avant qu'on puisse lui parler directement.
+        if (GreetingRecorder.exists(this)) {
+            reponds.isEnabled = false
+            reponds.alpha = 0.5f
+            reponds.text = "⏳ Message en cours…"
+            // + 300 ms de marge (latence FCM→ouverture d'écran, l'envoi a déjà pu démarrer avant).
+            val delayMs = (GreetingRecorder.durationSeconds(this) * 1000).toLong() + 300L
+            reponds.postDelayed(enableRespond, delayMs)
+        }
+    }
+
+    private var respondButton: Button? = null
+    private val enableRespond = Runnable {
+        respondButton?.apply { isEnabled = true; alpha = 1f; text = "Répondre" }
     }
 
     private fun showAnswered() {
         answered = true
+        // Décroché PENDANT l'envoi du message d'accueil (cas fréquent, ~5s de fenêtre) : la
+        // sonnette n'accepte qu'UNE session voix à la fois — sans ça, le talk-back ouvre sa
+        // propre session en parallèle et les deux se corrompent mutuellement (confirmé par les
+        // logs le 2026-09-04 : le talk-back obtenait son ACK avant que l'accueil ait fini
+        // d'envoyer). Interrompt proprement (STOP_VOICE) AVANT toute chose, pour que le canal
+        // soit libre quand startTalk() ouvre sa session.
+        GreetingSender.cancel()
+        respondButton?.removeCallbacks(enableRespond)
         stopRinging()                        // coupe la sonnerie alarme
         CallForegroundService.stop(this, callId)  // coupe le FGS sonnerie quand on décroche (scopé)
         CallCoordinator.answered(callId)     // prévient HA → coupe la sonnerie sur les AUTRES téléphones
