@@ -8,16 +8,18 @@ import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
- * Coordination multi-appareils. Quand CE téléphone décroche, il prévient Home Assistant
- * (webhook) avec le `call_id` + son nom d'appareil. L'automatisation HA pousse alors un FCM
- * `cancel` (même call_id) à TOUS les AUTRES téléphones → leur sonnerie/écran s'arrête, et la
- * session voix unique de la sonnette n'est pas disputée.
+ * Coordination multi-appareils. Quand CE téléphone décroche OU refuse, il prévient Home
+ * Assistant (webhook) avec le `call_id` + son nom d'appareil. L'automatisation HA pousse alors
+ * un FCM `cancel` (même call_id) à TOUS les AUTRES téléphones → leur sonnerie/écran s'arrête,
+ * et la session voix unique de la sonnette n'est pas disputée.
  *
  * Asynchrone + via [Net] (DNS-over-HTTPS) → fiable en 5G, ne bloque pas l'UI.
  */
 object CallCoordinator {
 
     fun answered(callId: String?) = notify(callId, "answered")
+
+    fun declined(callId: String?) = notify(callId, "declined")
 
     private fun notify(callId: String?, action: String) {
         if (callId.isNullOrBlank()) return

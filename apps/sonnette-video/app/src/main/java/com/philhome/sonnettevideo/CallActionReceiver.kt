@@ -6,7 +6,9 @@ import android.content.Intent
 
 /**
  * Actions de la notification d'appel :
- *  - REFUSER : ferme l'appel (arrête le FGS + la notif).
+ *  - REFUSER : ferme l'appel (arrête le FGS + la notif) ET prévient HA (comme un décroché)
+ *    pour que la sonnerie s'arrête aussi sur les AUTRES téléphones — sinon un refus reste
+ *    purement local et l'autre appareil continue de sonner indéfiniment.
  *  - COUPER LE SON : coupe la sonnerie (son + vibration) SANS raccrocher → utilisable écran
  *    allumé, directement depuis la notif (l'écran d'appel ne s'ouvre pas tout seul écran allumé).
  */
@@ -20,6 +22,7 @@ class CallActionReceiver : BroadcastReceiver() {
         when (intent.action) {
             ACTION_DECLINE -> {
                 val callId = intent.getStringExtra("call_id")
+                CallCoordinator.declined(callId)   // prévient HA → coupe la sonnerie sur les AUTRES téléphones
                 CallForegroundService.stop(context, callId)   // arrête le FGS + sa notif (scopé)
                 // Refuser depuis la notif (écran verrouillé, activité pas forcément ouverte) doit
                 // aussi fermer l'écran d'appel s'il est affiché — même chemin scopé que l'annulation

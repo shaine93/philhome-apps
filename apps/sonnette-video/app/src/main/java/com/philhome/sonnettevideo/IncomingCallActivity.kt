@@ -307,7 +307,13 @@ class IncomingCallActivity : Activity() {
 
     /* ---------- Actions ---------- */
 
-    private fun decline() = endCall()
+    /** Refuser un appel qui sonne encore (jamais décroché) : prévient HA pour couper la
+     * sonnerie sur les AUTRES téléphones — contrairement à hangUp()/le cancel distant, qui
+     * ne doivent jamais renotifier HA (déjà répondu, ou déjà notifié par l'appareil source). */
+    private fun decline() {
+        CallCoordinator.declined(callId)
+        endCall()
+    }
 
     private fun hangUp() = endCall()
 
