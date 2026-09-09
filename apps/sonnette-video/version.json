@@ -1,6 +1,6 @@
 {
-  "versionCode": 34,
-  "versionName": "0.6.8",
-  "notes": "Corrige collision annonce/talk-back (decroche pendant l'annonce coupait les deux), bloque le bouton Repondre pendant l'annonce, corrige le delai audio croissant en 5G (anti-accumulation file WebSocket)",
+  "versionCode": 35,
+  "versionName": "0.6.9",
+  "notes": "Fix: refuser un appel prevenait pas l'autre telephone (la sonnerie continuait)",
   "apkUrl": "https://github.com/shaine93/philhome-apps/releases/download/sonnette-latest/sonnette-video.apk"
 }
